@@ -85,6 +85,8 @@ class LivoxDetectionNode(Node):
         self.declare_parameter("frame_override", "")
         self.declare_parameter("max_distance", 25.0)
         self.declare_parameter("offset_ground", 1.33)
+        # Comma-separated class names to keep (must match CLASS_NAMES); empty = no filter
+        self.declare_parameter("class_filter", "pedestrian")
 
         self.algorithm = self.get_parameter("algorithm").value.lower()
         self.checkpoint_path = self.get_parameter("checkpoint_path").value
@@ -97,6 +99,11 @@ class LivoxDetectionNode(Node):
         self.frame_override = self.get_parameter("frame_override").value or None
         self.max_distance = float(self.get_parameter("max_distance").value)
         self.offset_ground = float(self.get_parameter("offset_ground").value)
+        class_filter_str = self.get_parameter("class_filter").value.strip()
+        self.class_filter = (
+            {c.strip() for c in class_filter_str.split(",") if c.strip()}
+            if class_filter_str else None
+        )
         self.voxelnext_cfg = self.get_parameter("voxelnext_cfg").value
         self.voxelnext_dir = self.get_parameter("voxelnext_dir").value
 
@@ -281,6 +288,12 @@ class LivoxDetectionNode(Node):
             if boxes.shape[0] > 0 and self.max_distance > 0:
                 dist2d = np.hypot(boxes[:, 0], boxes[:, 1])
                 keep = dist2d <= self.max_distance
+                boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
+            if boxes.shape[0] > 0 and self.class_filter is not None:
+                keep = np.array([
+                    (CLASS_NAMES[lbl] if 0 <= lbl < len(CLASS_NAMES) else None) in self.class_filter
+                    for lbl in labels
+                ], dtype=bool)
                 boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
 
         # Periodic diagnostic logging

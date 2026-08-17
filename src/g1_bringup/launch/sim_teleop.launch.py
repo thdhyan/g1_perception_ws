@@ -348,7 +348,11 @@ def launch_setup(context, *args, **kwargs):
                     "input_topic": "/livox/mid360/points",
                     "target_frame": "pelvis",
                     "score_threshold": 0.10,
-                    "accumulate_frames": 4,
+                    "class_filter": "pedestrian",
+                    # Mid-360 gpu_lidar sensor runs at 10Hz (100ms/scan); 2 accumulated
+                    # frames = 200ms of data per inference, matching max_hz below 1:1
+                    # instead of the old 4-frame/400ms window overlapping across cycles.
+                    "accumulate_frames": 2,
                     "max_hz": 5.0,
                     "use_sim_time": use_sim_time,
                 }],
