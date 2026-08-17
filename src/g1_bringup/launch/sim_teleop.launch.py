@@ -451,16 +451,31 @@ def launch_setup(context, *args, **kwargs):
 
 
 
-    # ── RViz2 ─────────────────────────────────────────────────────────────────
+    # ── Dual RViz2 Displays (SLAM/Mapping and Ground Truth) ───────────────────
     if rviz_cfg == "true":
-        rviz_config = os.path.join(
-            get_package_share_directory("g1_description"), "config", "g1_sim.rviz"
-        )
+        g1_desc_share = get_package_share_directory("g1_description")
+        mapping_rviz = os.path.join(g1_desc_share, "config", "g1_sim_mapping.rviz")
+        gt_rviz = os.path.join(g1_desc_share, "config", "g1_sim_ground_truth.rviz")
+
+        # 1. Primary Mapping & SLAM RViz (Fixed Frame: map)
         nodes.append(
             Node(
                 package="rviz2",
                 executable="rviz2",
-                arguments=["-d", rviz_config],
+                name="rviz2_mapping",
+                arguments=["-d", mapping_rviz, "--title", "G1 - SLAM & Proprioception (map)"],
+                parameters=[{"use_sim_time": use_sim_time}],
+                output="screen",
+            )
+        )
+
+        # 2. Ground Truth Sim RViz (Fixed Frame: warehouse)
+        nodes.append(
+            Node(
+                package="rviz2",
+                executable="rviz2",
+                name="rviz2_ground_truth",
+                arguments=["-d", gt_rviz, "--title", "G1 - Simulation Ground Truth (warehouse)"],
                 parameters=[{"use_sim_time": use_sim_time}],
                 output="screen",
             )
