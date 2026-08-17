@@ -374,5 +374,52 @@
       </link>
     </model>
 
+    <!--
+      Moving pedestrian actor (Gazebo Harmonic actor system, see
+      https://gazebosim.org/docs/harmonic/actors/). Unlike human_1..human_5
+      above (static primitive-geometry models), this one actually walks, so
+      detection nodes (livox_detection VoxelNeXt/PointPillar/CenterPoint) have
+      a moving target to track instead of only static boxes. Path: X=-3,
+      Y oscillating -4 <-> 4 (8m, clear of shelf_1/shelf_2 at Y=5 and
+      human_1..3 at X=3..4), ~1.2 m/s walking pace, loops forever.
+    -->
+    <actor name="human_walking">
+      <skin>
+        <filename>https://fuel.gazebosim.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+      </skin>
+      <animation name="walk">
+        <filename>https://fuel.gazebosim.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0.0</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walk" tension="0.6">
+          <waypoint>
+            <time>0</time>
+            <pose>-3 -4 1.0 0 0 1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>6.67</time>
+            <pose>-3 4 1.0 0 0 1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>7.17</time>
+            <pose>-3 4 1.0 0 0 -1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>13.84</time>
+            <pose>-3 -4 1.0 0 0 -1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>14.34</time>
+            <pose>-3 -4 1.0 0 0 1.5708</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
+
   </world>
 </sdf>
