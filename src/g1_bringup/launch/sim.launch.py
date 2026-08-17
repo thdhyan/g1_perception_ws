@@ -279,6 +279,20 @@ def launch_setup(context, *args, **kwargs):
         )
     )
 
+    # Connect Ground Truth World (warehouse) to SLAM Map (map)
+    nodes.append(
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="tf_warehouse_to_map",
+            arguments=[
+                "--frame-id", "warehouse",
+                "--child-frame-id", "map",
+            ],
+            output="screen",
+        )
+    )
+
     # Initial map -> odom transform
     nodes.append(
         Node(
@@ -426,6 +440,7 @@ def launch_setup(context, *args, **kwargs):
                             "imu_topic": "/imu/data",
                             "odom_frame": "odom",
                             "imu_frame": "pelvis",
+                            "use_sim_time": use_sim_time,
                         },
                     ],
                 )
@@ -444,6 +459,7 @@ def launch_setup(context, *args, **kwargs):
                             "map_frame": "map",
                             "odom_frame": "odom",
                             "imu_frame": "pelvis",
+                            "use_sim_time": use_sim_time,
                         },
                     ],
                 )
