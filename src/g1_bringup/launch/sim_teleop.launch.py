@@ -199,20 +199,6 @@ def launch_setup(context, *args, **kwargs):
         )
     )
 
-    # ── Static TFs ────────────────────────────────────────────────────────────
-    nodes.append(
-        Node(
-            package="tf2_ros",
-            executable="static_transform_publisher",
-            name="tf_mid360_to_livox",
-            arguments=[
-                "--frame-id", "mid360_link",
-                "--child-frame-id", "livox_frame",
-            ],
-            output="screen",
-        )
-    )
-
     # ── Static TFs: Sensor frames and Tree roots ──────────────────────────────
     # Sensor optical / frame bindings
     nodes.append(
