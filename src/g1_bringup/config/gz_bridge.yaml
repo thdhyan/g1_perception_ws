@@ -1,0 +1,290 @@
+# ROS2 <-> Gazebo Harmonic bridge configuration for G1 simulation
+#
+# Sensor plugins in URDF:
+#   - mid360_link: gpu_lidar + LivoxHarmonicPlugin (libros2_livox.so)
+#       gz topic: /lidar  (PointCloudPacked)
+#   - d435_link: rgbd_camera (single sensor -> image + depth + points)
+#       gz topics: /camera/image, /camera/depth_image, /camera/points, /camera/camera_info
+#
+# No livox_ros_driver2 or realsense2_camera needed in sim.
+
+# Simulation clock
+- ros_topic_name: /clock
+  gz_topic_name: /clock
+  ros_type_name: rosgraph_msgs/msg/Clock
+  gz_type_name: gz.msgs.Clock
+  direction: GZ_TO_ROS
+
+# Robot world pose TF from Gazebo PosePublisher -> ROS /tf
+# In Gazebo Harmonic, PosePublisher on model publishes to /world/warehouse/model/g1/pose or /model/g1/pose
+- ros_topic_name: /tf
+  gz_topic_name: /model/g1/pose
+  ros_type_name: tf2_msgs/msg/TFMessage
+  gz_type_name: gz.msgs.Pose_V
+  direction: GZ_TO_ROS
+
+- ros_topic_name: /tf
+  gz_topic_name: /world/warehouse/model/g1/pose
+  ros_type_name: tf2_msgs/msg/TFMessage
+  gz_type_name: gz.msgs.Pose_V
+  direction: GZ_TO_ROS
+
+# WBC per-joint position targets: ROS2 -> Gazebo (one Float64 per joint).
+# Consumed by the per-joint gz::sim::systems::JointPositionController plugins
+# (see g1_description urdf). Legs/waist carry policy output; arms held at 0.
+# WBC per-joint position target: left_hip_pitch_joint
+- ros_topic_name: /g1/joint/left_hip_pitch_joint
+  gz_topic_name: /model/g1/left_hip_pitch_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: left_hip_roll_joint
+- ros_topic_name: /g1/joint/left_hip_roll_joint
+  gz_topic_name: /model/g1/left_hip_roll_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: left_hip_yaw_joint
+- ros_topic_name: /g1/joint/left_hip_yaw_joint
+  gz_topic_name: /model/g1/left_hip_yaw_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: left_knee_joint
+- ros_topic_name: /g1/joint/left_knee_joint
+  gz_topic_name: /model/g1/left_knee_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: left_ankle_pitch_joint
+- ros_topic_name: /g1/joint/left_ankle_pitch_joint
+  gz_topic_name: /model/g1/left_ankle_pitch_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: left_ankle_roll_joint
+- ros_topic_name: /g1/joint/left_ankle_roll_joint
+  gz_topic_name: /model/g1/left_ankle_roll_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: right_hip_pitch_joint
+- ros_topic_name: /g1/joint/right_hip_pitch_joint
+  gz_topic_name: /model/g1/right_hip_pitch_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: right_hip_roll_joint
+- ros_topic_name: /g1/joint/right_hip_roll_joint
+  gz_topic_name: /model/g1/right_hip_roll_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: right_hip_yaw_joint
+- ros_topic_name: /g1/joint/right_hip_yaw_joint
+  gz_topic_name: /model/g1/right_hip_yaw_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: right_knee_joint
+- ros_topic_name: /g1/joint/right_knee_joint
+  gz_topic_name: /model/g1/right_knee_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: right_ankle_pitch_joint
+- ros_topic_name: /g1/joint/right_ankle_pitch_joint
+  gz_topic_name: /model/g1/right_ankle_pitch_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: right_ankle_roll_joint
+- ros_topic_name: /g1/joint/right_ankle_roll_joint
+  gz_topic_name: /model/g1/right_ankle_roll_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: waist_yaw_joint
+- ros_topic_name: /g1/joint/waist_yaw_joint
+  gz_topic_name: /model/g1/waist_yaw_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: waist_roll_joint
+- ros_topic_name: /g1/joint/waist_roll_joint
+  gz_topic_name: /model/g1/waist_roll_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: waist_pitch_joint
+- ros_topic_name: /g1/joint/waist_pitch_joint
+  gz_topic_name: /model/g1/waist_pitch_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: left_shoulder_pitch_joint
+- ros_topic_name: /g1/joint/left_shoulder_pitch_joint
+  gz_topic_name: /model/g1/left_shoulder_pitch_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: left_shoulder_roll_joint
+- ros_topic_name: /g1/joint/left_shoulder_roll_joint
+  gz_topic_name: /model/g1/left_shoulder_roll_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: left_shoulder_yaw_joint
+- ros_topic_name: /g1/joint/left_shoulder_yaw_joint
+  gz_topic_name: /model/g1/left_shoulder_yaw_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: left_elbow_joint
+- ros_topic_name: /g1/joint/left_elbow_joint
+  gz_topic_name: /model/g1/left_elbow_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: left_wrist_roll_joint
+- ros_topic_name: /g1/joint/left_wrist_roll_joint
+  gz_topic_name: /model/g1/left_wrist_roll_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: left_wrist_pitch_joint
+- ros_topic_name: /g1/joint/left_wrist_pitch_joint
+  gz_topic_name: /model/g1/left_wrist_pitch_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: left_wrist_yaw_joint
+- ros_topic_name: /g1/joint/left_wrist_yaw_joint
+  gz_topic_name: /model/g1/left_wrist_yaw_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: right_shoulder_pitch_joint
+- ros_topic_name: /g1/joint/right_shoulder_pitch_joint
+  gz_topic_name: /model/g1/right_shoulder_pitch_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: right_shoulder_roll_joint
+- ros_topic_name: /g1/joint/right_shoulder_roll_joint
+  gz_topic_name: /model/g1/right_shoulder_roll_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: right_shoulder_yaw_joint
+- ros_topic_name: /g1/joint/right_shoulder_yaw_joint
+  gz_topic_name: /model/g1/right_shoulder_yaw_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: right_elbow_joint
+- ros_topic_name: /g1/joint/right_elbow_joint
+  gz_topic_name: /model/g1/right_elbow_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: right_wrist_roll_joint
+- ros_topic_name: /g1/joint/right_wrist_roll_joint
+  gz_topic_name: /model/g1/right_wrist_roll_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: right_wrist_pitch_joint
+- ros_topic_name: /g1/joint/right_wrist_pitch_joint
+  gz_topic_name: /model/g1/right_wrist_pitch_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# WBC per-joint position target: right_wrist_yaw_joint
+- ros_topic_name: /g1/joint/right_wrist_yaw_joint
+  gz_topic_name: /model/g1/right_wrist_yaw_joint
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ
+
+# Pelvis IMU (used by WBC for orientation + angular velocity)
+- ros_topic_name: /imu/data
+  gz_topic_name: /imu
+  ros_type_name: sensor_msgs/msg/Imu
+  gz_type_name: gz.msgs.IMU
+  direction: GZ_TO_ROS
+
+# G1 joint states.
+# NOTE: gz-sim-joint-state-publisher-system publishes on the WORLD-scoped topic
+# /world/<world>/model/<model>/joint_state. The short /model/g1/joint_state is
+# advertised but stays SILENT — bridging that one leaves the WBC with no joint
+# feedback, so it holds a static default pose and the robot falls over.
+# World name comes from worlds/g1_warehouse.sdf (<world name="warehouse">).
+- ros_topic_name: /joint_states
+  gz_topic_name: /world/warehouse/model/g1/joint_state
+  ros_type_name: sensor_msgs/msg/JointState
+  gz_type_name: gz.msgs.Model
+  direction: GZ_TO_ROS
+
+# Mid-360 LiDAR point cloud (gpu_lidar + LivoxHarmonicPlugin)
+- ros_topic_name: /livox/mid360/points
+  gz_topic_name: /lidar/points
+  ros_type_name: sensor_msgs/msg/PointCloud2
+  gz_type_name: gz.msgs.PointCloudPacked
+  direction: GZ_TO_ROS
+
+# D435i RGBD camera - RGB image
+- ros_topic_name: /camera/color/image_raw
+  gz_topic_name: /camera/image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: gz.msgs.Image
+  direction: GZ_TO_ROS
+
+# D435i RGBD camera - camera info (shared for RGB + depth)
+- ros_topic_name: /camera/color/camera_info
+  gz_topic_name: /camera/camera_info
+  ros_type_name: sensor_msgs/msg/CameraInfo
+  gz_type_name: gz.msgs.CameraInfo
+  direction: GZ_TO_ROS
+
+# D435i RGBD camera - depth image
+- ros_topic_name: /camera/depth/image_rect_raw
+  gz_topic_name: /camera/depth_image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: gz.msgs.Image
+  direction: GZ_TO_ROS
+
+# D435i RGBD camera - point cloud (from rgbd_camera sensor)
+- ros_topic_name: /camera/depth/points
+  gz_topic_name: /camera/points
+  ros_type_name: sensor_msgs/msg/PointCloud2
+  gz_type_name: gz.msgs.PointCloudPacked
+  direction: GZ_TO_ROS

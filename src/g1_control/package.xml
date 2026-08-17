@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypemirror="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>g1_control</name>
+  <version>0.1.0</version>
+  <description>
+    G1 locomotion control bridges: cmd_vel_bridge (Nav2 velocity controller),
+    cmd_pose_bridge (relative pose deltas), human_follower_node (follow human
+    with standoff), and robot_bridge (standalone Unix socket RPC to G1 SDK).
+  </description>
+  <maintainer email="th.dhyan.us@gmail.com">thakk100</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>tf2_geometry_msgs</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

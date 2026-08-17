@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypemirror="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>g1_perception</name>
+  <version>0.1.0</version>
+  <description>
+    Bridges Unitree G1 LiDAR topics (sim or real robot) onto /livox/mid360/points,
+    runs the G1_sim CenterPoint detection pipeline against them, and fuses
+    LiDAR + D435 RGB-D via CCVNorm-based depth completion for mapping.
+  </description>
+  <maintainer email="th.dhyan.us@gmail.com">thakk100</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>message_filters</exec_depend>
+  <exec_depend>sensor_msgs_py</exec_depend>
+  <exec_depend>vision_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
+  <exec_depend>builtin_interfaces</exec_depend>
+  <!-- unitree_sdk2py: pip install unitree_sdk2py (not in rosdep) -->
+  <!-- Required by loco_client for G1 SDK locomotion commands -->
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

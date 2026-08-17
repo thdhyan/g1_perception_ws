@@ -1,0 +1,80 @@
+# Default parameters for G1 perception pipeline
+
+lidar_bridge:
+  # "real"         = /livox/lidar (livox_ros_driver2, confirmed on real G1)
+  # "unitree_slam" = /unitree/slam_mapping/points (robot's onboard SLAM cloud)
+  # "sim"          = passthrough (Isaac Sim)
+  # "utlidar"      = /utlidar/cloud (legacy)
+  source: "real"
+  output_topic: "/livox/mid360/points"
+  output_frame_id: "mid360_link"
+
+detection_bridge:
+  backend: "livox"
+  checkpoint: "pt/livox_model_1.pt"
+  device: "cuda"
+  score_threshold: 0.4
+  input_topic: "/livox/mid360/points"
+
+ccvnorm:
+  lidar_topic: "/livox/mid360/points"
+  # Real robot topics from realsense2_camera (confirmed via g1_sensors.launch.py)
+  depth_topic: "/camera/aligned_depth_to_color/image_raw"
+  rgb_topic: "/camera/color/image_raw"
+  camera_info_topic: "/camera/color/camera_info"
+  output_topic: "/g1/mapping/depth_completed"
+  camera_frame: "d435_color_optical_frame"
+  fusion_mode: "ccvnorm_pseudo_stereo"  # "ccvnorm_pseudo_stereo" or "ccvnorm_network"
+  max_lidar_range_m: 40.0
+  min_lidar_range_m: 0.2
+  sync_slop_sec: 0.05
+  lidar_confidence_radius_px: 2
+  depth_scale_m: 1.0
+  # Camera intrinsics fallback (D435 720p color)
+  fx: 617.0
+  fy: 617.0
+  cx: 320.0
+  cy: 240.0
+
+livox_detection_node:
+  input_topic: "/livox/lidar"          # livox_ros_driver2 CustomMsg topic
+  checkpoint_path: "pt/livox_model_1.pt"
+  max_hz: 5.0
+  score_threshold: 0.4
+  device: "cuda"
+
+nav_goal_node:
+  map_frame: "map"
+  robot_base_frame: "base_link"
+  goal_timeout_sec: 60.0
+  # Send goals via: ros2 topic pub --once /g1/nav_goal geometry_msgs/PoseStamped \
+  #   '{header: {frame_id: "map"}, pose: {position: {x: 1.0, y: 2.0, z: 0.0}, orientation: {w: 1.0}}}'
+
+human_selector_node:
+  detection_topic: "/g1/detections/centerpoint"
+  min_score: 0.3
+  redetect_cooldown_sec: 3.0
+
+loco_client:
+  # interface: set via G1_INTERFACE env var or launch arg
+  use_robot: true
+  arm_controlled: "both"   # left | right | both
+  enable_arm_ui: true
+
+nav2point:
+  publish_rate: 50.0
+  pos_kp: 0.8
+  yaw_kp: 1.5
+  waypoint_tolerance: 0.20
+  goal_tolerance: 0.10
+  frame_id: "map"
+  standoff_distance: 0.60  # stop 60 cm in front of human
+  vx_limit: 0.6
+  vy_limit: 0.6
+  wz_limit: 0.5
+  joy_topic: "/g1pilot/auto_joy"
+  path_topic: "/g1pilot/path"
+  auto_enable_topic: "/g1pilot/auto_enable"
+  human_goal_topic: "/g1/selected_human"
+  # Real robot odom (confirmed live, 10.8 Hz from g1_sensors.launch.py)
+  odom_topic: "/unitree/slam_mapping/odom"

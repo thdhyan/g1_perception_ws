@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypemirror="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>g1_bringup</name>
+  <version>0.1.0</version>
+  <description>
+    Gazebo Harmonic simulation bringup for Unitree G1 robot with Mid-360 LiDAR
+    and RealSense D435 sensors. Includes real robot sensor drivers.
+  </description>
+  <maintainer email="th.dhyan.us@gmail.com">thakk100</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>rosgraph_msgs</exec_depend>
+  <exec_depend>livox_ros_driver2</exec_depend>
+  <exec_depend>realsense2_camera</exec_depend>
+  <exec_depend>lowstate_to_jointstate</exec_depend>
+  <exec_depend>g1_description</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

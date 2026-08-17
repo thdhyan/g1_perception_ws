@@ -1,0 +1,3 @@
+#!/usr/bin/env python3
+from g1_wbc.wbc_node import main
+main()

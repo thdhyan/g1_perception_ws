@@ -1,0 +1,54 @@
+# Parameters for pointcloud_to_laserscan node converting Unitree G1 Mid-360 LiDAR PointCloud2 to LaserScan
+# Input topic: /livox/mid360/points (PointCloud2)
+# Output topic: /scan (LaserScan)
+
+pointcloud_to_laserscan_node:
+  ros__parameters:
+    # Frame in which to project the cloud before slicing.
+    # The Mid-360 LiDAR is rigidly attached to the G1 torso at mid360_link.
+    # Projection into mid360_link ensures consistent height filtering.
+    target_frame: "livox_frame"
+
+    # Tolerance for TF lookups (seconds). Allows for slight time skew between
+    # point cloud timestamp and current TF state. Set low since LiDAR is on-robot.
+    transform_tolerance: 0.01
+
+    # Height filtering thresholds (meters above the sensor in target_frame).
+    # These cut ground returns and ceiling/head reflections.
+    # Min height 0.1m removes immediate ground noise around the G1 base.
+    # Max height 1.5m captures foot-to-shoulder height obstacles, ignoring ceiling.
+    min_height: 0.1
+    max_height: 1.5
+
+    # Angular range of output scan (radians).
+    # Mid-360 covers 360° horizontal FOV; we output full circle for SLAM/navigation.
+    # angle_min/angle_max set to ±π gives full 2π radians.
+    angle_min: -3.14159
+    angle_max: 3.14159
+
+    # Angular resolution (radians per beam).
+    # 0.00436 rad ≈ 0.25 degrees, yielding ~1440 beams per full rotation.
+    # Fine enough for obstacle detection, coarse enough to avoid excessive data.
+    angle_increment: 0.00436
+
+    # Time to acquire one full scan (seconds).
+    # Mid-360 publishes at ~10 Hz (100ms per frame); set scan_time to match.
+    scan_time: 0.1
+
+    # Minimum range to output (meters).
+    # 0.1m filters out near-field noise and reflections very close to the sensor.
+    range_min: 0.1
+
+    # Maximum range to output (meters).
+    # Mid-360 specified range ~30m; 30m covers typical indoor navigation distances.
+    range_max: 30.0
+
+    # Use infinity to represent out-of-range points instead of clipping to range_max.
+    # Enables downstream algorithms (SLAM) to distinguish max-range misses from
+    # points beyond the sensor's useful range.
+    use_inf: true
+
+    # Epsilon value for inf representation (meters).
+    # Points at distance > (range_max + inf_epsilon) are marked as infinite range.
+    # 1.0m buffer is reasonable for Mid-360's ~30m max useful range.
+    inf_epsilon: 1.0

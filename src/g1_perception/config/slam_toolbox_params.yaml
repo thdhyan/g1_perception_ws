@@ -1,0 +1,66 @@
+# SLAM Toolbox params for Unitree G1 with Mid-360 LiDAR
+# Wrapped in slam_toolbox_node/ros__parameters for ROS2 Jazzy compatibility.
+# Mid-360 note: solid-state non-repetitive scan — higher scan_buffer_size helps.
+
+/**:
+  ros__parameters:
+    # Core
+    mode: online_async
+    map_frame: map
+    odom_frame: odom
+    base_frame: livox_frame
+    scan_topic: /scan_synced
+    use_sim_time: false
+
+    # Timing — large tf_buffer_duration to handle clock skew between robot and laptop
+    minimum_time_interval: 0.2
+    transform_timeout: 1.0
+    tf_buffer_duration: 120.0
+    stack_size_to_use: 40000000
+
+    # Motion thresholds
+    minimum_travel_distance: 0.1
+    minimum_travel_heading: 0.1
+
+    # Scan matching
+    use_scan_matching: true
+    use_scan_barycenter: true
+    scan_buffer_size: 10
+    scan_buffer_maximum_scan_distance: 10.0
+    link_match_minimum_response_fine: 0.1
+    link_scan_maximum_distance: 1.5
+
+    # Map resolution
+    resolution: 0.05
+    max_laser_range: 20.0
+
+    # Loop closure
+    do_loop_closing: true
+    loop_search_maximum_distance: 3.0
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_coarse: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
+
+    # Correlation search
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+
+    # Loop search space
+    loop_search_space_dimension: 8.0
+    loop_search_space_resolution: 0.05
+    loop_search_space_smear_deviation: 0.03
+
+    # Penalties
+    distance_variance_penalty: 0.5
+    angle_variance_penalty: 1.0
+    fine_search_angle_offset: 0.00349
+    coarse_search_angle_offset: 0.349
+    coarse_angle_resolution: 0.0349
+    minimum_angle_penalty: 0.9
+    minimum_distance_penalty: 0.5
+
+    # Misc
+    enable_interactive_mode: false
+    use_response_expansion: true

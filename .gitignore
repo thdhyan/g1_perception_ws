@@ -1,0 +1,35 @@
+# ROS2 workspace build artifacts
+build/
+install/
+log/
+
+# Python & Virtual Environments
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+dist/
+
+# IDE & Editor configs
+.vscode/
+.idea/
+.claude/
+*.swp
+*~
+
+# Large data & recording files
+*.bag
+*.mcap
+*.pcd
+*.csv
+*.Csv
+*.pdf
+*.gv
+l;ong_test.csv.Csv
+
+# Gazebo logs & runtime artifacts
+~/.gz/
+~/.ros/
