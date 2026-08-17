@@ -33,6 +33,12 @@ from launch_ros.actions import Node
 CHECKPOINT_PATH = str(
     Path.home() / "Projects/thesis/G1_sim/detection/pt/livox_model_1.pt"
 )
+# VoxelNeXt uses its own nuScenes checkpoint (OpenPCDet format, not the
+# CenterPoint/PointPillar one above) -- livox_detection_node.py's own default
+# for checkpoint_path is CenterPoint/PointPillar-only and doesn't apply here.
+VOXELNEXT_CHECKPOINT_PATH = str(
+    Path(__file__).resolve().parents[3] / "pt" / "voxelnext_nuscenes.pth"
+)
 
 
 def preprocess_urdf(context, *args, **kwargs):
@@ -337,7 +343,7 @@ def launch_setup(context, *args, **kwargs):
                 output="screen",
                 parameters=[{
                     "algorithm": detection_algo,
-                    "checkpoint_path": checkpoint,
+                    "checkpoint_path": VOXELNEXT_CHECKPOINT_PATH if detection_algo == "voxelnext" else checkpoint,
                     "device": device,
                     "input_topic": "/livox/mid360/points",
                     "target_frame": "pelvis",
