@@ -30,6 +30,9 @@ dist/
 *.gv
 l;ong_test.csv.Csv
 
-# Gazebo logs & runtime artifacts
-~/.gz/
-~/.ros/
+# Upstream submodules / local clones & scratch
+VoxelNeXt/
+scratch/
+pt/*.pth
+pt/*.pt
+
