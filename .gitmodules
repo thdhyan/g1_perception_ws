@@ -1,0 +1,12 @@
+[submodule "src/g1_description"]
+	path = src/g1_description
+	url = https://github.com/thdhyan/g1_description.git
+[submodule "src/livox_laser_simulation_RO2"]
+	path = src/livox_laser_simulation_RO2
+	url = https://github.com/M2labo/livox_laser_simulation_RO2.git
+[submodule "src/Ultra-Fusion"]
+	path = src/Ultra-Fusion
+	url = https://github.com/sjtuyinjie/Ultra-Fusion.git
+[submodule "src/plain_slam_ros2"]
+	path = src/plain_slam_ros2
+	url = https://github.com/thdhyan/plain_slam_ros2.git

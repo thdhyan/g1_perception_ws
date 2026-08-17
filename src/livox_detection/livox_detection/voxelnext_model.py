@@ -124,7 +124,8 @@ class VoxelNeXtBackend:
 
         try:
             from pcdet.config import cfg, cfg_from_yaml_file
-            from pcdet.models import build_network
+            from pcdet.datasets import DatasetTemplate
+            from pcdet.models import build_network, load_data_to_gpu
             from pcdet.utils import common_utils
         except ImportError as e:
             raise ImportError(
@@ -132,19 +133,47 @@ class VoxelNeXtBackend:
                 f"cd {self.voxelnext_dir} && python setup.py develop. Error: {e}"
             )
 
-        # Load config
-        cfg_path = Path(self.cfg_file)
+        # Load config (switch to tools/ directory so relative _BASE_CONFIG_ resolves)
+        cfg_path = Path(self.cfg_file).resolve()
         if not cfg_path.exists():
             raise FileNotFoundError(f"VoxelNeXt config not found: {cfg_path}")
 
-        cfg_from_yaml_file(str(cfg_path), cfg)
-        self.cfg = cfg
+        import os
+        orig_cwd = os.getcwd()
+        tools_dir = Path(self.voxelnext_dir) / "tools"
+        if tools_dir.exists():
+            os.chdir(str(tools_dir))
+
+        try:
+            cfg_from_yaml_file(str(cfg_path), cfg)
+            self.cfg = cfg
+        finally:
+            os.chdir(orig_cwd)
+
+        # Build Demo Dataset wrapper for model initialization and data collation
+        class _LivoxDemoDataset(DatasetTemplate):
+            def __init__(self, dataset_cfg, class_names, training=False):
+                super().__init__(
+                    dataset_cfg=dataset_cfg, class_names=class_names, training=training
+                )
+
+            def __len__(self):
+                return 1
+
+            def __getitem__(self, index):
+                return {}
+
+        self.dataset = _LivoxDemoDataset(
+            dataset_cfg=cfg.DATA_CONFIG,
+            class_names=cfg.CLASS_NAMES,
+            training=False,
+        )
 
         # Build model
         self.model = build_network(
             model_cfg=cfg.MODEL,
             num_class=len(cfg.CLASS_NAMES),
-            dataset=None,
+            dataset=self.dataset,
         )
 
         # Load checkpoint
@@ -152,16 +181,7 @@ class VoxelNeXtBackend:
         if not ckpt_path.exists():
             raise FileNotFoundError(f"VoxelNeXt checkpoint not found: {ckpt_path}")
 
-        checkpoint_data = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
-        model_state = checkpoint_data.get("model_state", checkpoint_data)
-
-        # Clean state dict keys (remove 'module.' prefix from DDP training)
-        cleaned_state = {}
-        for k, v in model_state.items():
-            clean_key = k.replace("module.", "")
-            cleaned_state[clean_key] = v
-
-        self.model.load_state_dict(cleaned_state, strict=False)
+        self.model.load_params_from_file(filename=str(ckpt_path), logger=self.logger, to_cpu=True)
         self.model.to(self.device).eval()
 
         self.logger.info(
@@ -187,10 +207,13 @@ class VoxelNeXtBackend:
         if self.model is None or points.shape[0] == 0:
             return empty
 
-        # 1. Preprocess: ensure 4 columns, apply ground offset
+        # 1. Preprocess: ensure 5 columns [x, y, z, intensity, timestamp], apply ground offset
         pts = points.copy()
         if pts.shape[1] < 4:
             pts = np.hstack([pts[:, :3], np.zeros((pts.shape[0], 1), dtype=np.float32)])
+        if pts.shape[1] == 4:
+            # Add 5th feature (timestamp=0.0) expected by nuScenes point_feature_encoder
+            pts = np.hstack([pts, np.zeros((pts.shape[0], 1), dtype=np.float32)])
 
         pts[:, 2] += self.offset_ground
 
@@ -200,17 +223,19 @@ class VoxelNeXtBackend:
             self.logger.warning("[VoxelNeXt] All points masked out of range.")
             return empty
 
-        # 3. Add batch index column (column 0 = batch_idx = 0)
-        # VoxelNeXt/OpenPCDet expects (N, 5): [batch_idx, x, y, z, intensity]
-        coor_pad = np.pad(pts_masked, ((0, 0), (1, 0)), mode="constant", constant_values=0)
-
-        data_dict = {
-            "points": torch.from_numpy(coor_pad).float().to(self.device),
-            "batch_size": 1,
+        # 3. Format input_dict and prepare via OpenPCDet pipeline
+        input_dict = {
+            "points": pts_masked,
+            "frame_id": 0,
         }
 
-        # 4. Forward pass
         try:
+            from pcdet.models import load_data_to_gpu
+            data_dict = self.dataset.prepare_data(data_dict=input_dict)
+            data_dict = self.dataset.collate_batch([data_dict])
+            load_data_to_gpu(data_dict)
+
+            # 4. Forward pass
             with torch.no_grad():
                 pred_dicts, _ = self.model(data_dict)
         except Exception as e:
@@ -220,14 +245,18 @@ class VoxelNeXtBackend:
         if not pred_dicts or len(pred_dicts) == 0:
             return empty
 
-        # 5. Extract predictions
+        # 5. Extract predictions (boxes can be [K, 7] or [K, 9] for nuScenes with velocity)
         pred = pred_dicts[0]
-        boxes_pred = pred["pred_boxes"].cpu().numpy()    # (K, 7)
+        boxes_pred = pred["pred_boxes"].cpu().numpy()    # (K, 7 or 9)
         scores_pred = pred["pred_scores"].cpu().numpy()  # (K,)
         labels_pred = pred["pred_labels"].cpu().numpy()  # (K,) 1-indexed
 
         if boxes_pred.shape[0] == 0:
             return empty
+
+        # Slice to standard 7D box: [x, y, z, dx, dy, dz, yaw]
+        if boxes_pred.shape[1] > 7:
+            boxes_pred = boxes_pred[:, :7]
 
         # 6. Filter by score threshold
         keep = scores_pred >= self.score_threshold

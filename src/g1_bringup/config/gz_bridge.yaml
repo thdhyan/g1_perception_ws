@@ -242,6 +242,20 @@
   gz_type_name: gz.msgs.IMU
   direction: GZ_TO_ROS
 
+# Mid-360 onboard IMU (real robot equivalent: /livox/imu, frame=livox_frame)
+- ros_topic_name: /livox/imu
+  gz_topic_name: /livox/imu
+  ros_type_name: sensor_msgs/msg/Imu
+  gz_type_name: gz.msgs.IMU
+  direction: GZ_TO_ROS
+
+# D435i onboard IMU (not consumed by any node yet; parity + future VIO use)
+- ros_topic_name: /camera/imu
+  gz_topic_name: /camera/imu
+  ros_type_name: sensor_msgs/msg/Imu
+  gz_type_name: gz.msgs.IMU
+  direction: GZ_TO_ROS
+
 # G1 joint states.
 # NOTE: gz-sim-joint-state-publisher-system publishes on the WORLD-scoped topic
 # /world/<world>/model/<model>/joint_state. The short /model/g1/joint_state is

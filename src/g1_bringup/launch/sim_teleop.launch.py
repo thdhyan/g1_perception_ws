@@ -7,7 +7,8 @@ Launches:
   - robot_state_publisher (TF from URDF)
   - ros_gz_bridge (Gazebo <-> ROS2 topic bridge)
   - G1 model spawned into Gazebo
-  - Static TFs: mid360_link->livox_frame, base_link->pelvis,
+  - Static TFs: mid360_link->livox_frame, pelvis->base_link, map->odom (fallback),
+                odom->pelvis (fallback),
                 d435_link->camera_color_optical_frame,
                 d435_link->camera_depth_optical_frame
   - 3D PointPillars human detection (PointCloud2 input from /livox/mid360/points)
@@ -234,19 +235,6 @@ def launch_setup(context, *args, **kwargs):
         Node(
             package="tf2_ros",
             executable="static_transform_publisher",
-            name="tf_g1_29dof_to_gt_base",
-            arguments=[
-                "--frame-id", "g1_29dof",
-                "--child-frame-id", "gt_base_link",
-            ],
-            output="screen",
-        )
-    )
-
-    nodes.append(
-        Node(
-            package="tf2_ros",
-            executable="static_transform_publisher",
             name="tf_gt_base_to_gt_pelvis",
             arguments=[
                 "--frame-id", "gt_base_link",
@@ -256,15 +244,51 @@ def launch_setup(context, *args, **kwargs):
         )
     )
 
-    # Base link alias for pelvis in robot_state_publisher tree
+    # Initial map -> odom transform (identity fallback so the tree is connected
+    # before slam_3d_node publishes its first dynamic map->odom; overridden by
+    # the dynamic broadcast once SLAM is running — same parent/child pair, so
+    # no multi-parent conflict).
     nodes.append(
         Node(
             package="tf2_ros",
             executable="static_transform_publisher",
-            name="tf_base_to_pelvis",
+            name="tf_map_to_odom",
             arguments=[
-                "--frame-id", "base_link",
+                "--frame-id", "map",
+                "--child-frame-id", "odom",
+            ],
+            output="screen",
+        )
+    )
+
+    # Initial odom -> pelvis transform (identity fallback until lio_3d_node
+    # publishes its first dynamic odom->pelvis; same parent/child pair as the
+    # dynamic broadcast, so no multi-parent conflict).
+    nodes.append(
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="tf_odom_to_pelvis",
+            arguments=[
+                "--frame-id", "odom",
                 "--child-frame-id", "pelvis",
+            ],
+            output="screen",
+        )
+    )
+
+    # base_link alias, hung off pelvis (NOT the other way around) for Nav2/2D
+    # SLAM configs that expect a "base_link" frame. pelvis's only parent must
+    # stay "odom" (published by lio_3d_node) — a base_link->pelvis edge here
+    # would give pelvis two parents (base_link and odom) at once.
+    nodes.append(
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="tf_pelvis_to_base",
+            arguments=[
+                "--frame-id", "pelvis",
+                "--child-frame-id", "base_link",
             ],
             output="screen",
         )
@@ -515,8 +539,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "detection_algorithm",
-            default_value="pointpillar",
-            description="3D human detection algorithm ('pointpillar' or 'centerpoint')",
+            default_value="voxelnext",
+            description="3D human detection algorithm ('voxelnext', 'pointpillar', or 'centerpoint')",
         ),
         DeclareLaunchArgument(
             "slam",
