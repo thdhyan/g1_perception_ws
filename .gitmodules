@@ -10,3 +10,18 @@
 [submodule "src/plain_slam_ros2"]
 	path = src/plain_slam_ros2
 	url = https://github.com/thdhyan/plain_slam_ros2.git
+[submodule "isaac_ros_ws/src/isaac_ros_common"]
+	path = isaac_ros_ws/src/isaac_ros_common
+	url = https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common.git
+[submodule "isaac_ros_ws/src/isaac_ros_visual_slam"]
+	path = isaac_ros_ws/src/isaac_ros_visual_slam
+	url = https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_visual_slam.git
+[submodule "isaac_ros_ws/src/isaac_ros_nvblox"]
+	path = isaac_ros_ws/src/isaac_ros_nvblox
+	url = https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nvblox.git
+[submodule "isaac_ros_ws/src/isaac_ros_image_segmentation"]
+	path = isaac_ros_ws/src/isaac_ros_image_segmentation
+	url = https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_segmentation.git
+[submodule "isaac_ros_ws/src/isaac_ros_nitros"]
+	path = isaac_ros_ws/src/isaac_ros_nitros
+	url = https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nitros.git
