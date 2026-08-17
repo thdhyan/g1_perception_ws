@@ -419,6 +419,7 @@ class WbcNode(Node):
             target_height = self._target_height
 
         quat = self._quat_wxyz.copy()
+        # IMU angular velocity is body-frame; rotate or scale accordingly
         ang_vel = self._ang_vel_body.copy()
 
         if emergency or self._balance_fn is None:
@@ -429,7 +430,8 @@ class WbcNode(Node):
         loco_cmd = np.array([vx, vy, wz], dtype=np.float32)
         cmd_magnitude = np.linalg.norm(loco_cmd)
 
-        # Stationary Deadband & Stance Stabilization
+        # Stationary Deadband & Stance Stabilization:
+        # When stationary (no active teleop cmd), strictly hold standing pose
         if cmd_magnitude <= WALK_CMD_DEADBAND:
             loco_cmd = np.zeros(3, dtype=np.float32)
             self._stationary_time += self._dt

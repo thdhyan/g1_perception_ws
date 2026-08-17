@@ -279,6 +279,34 @@ def launch_setup(context, *args, **kwargs):
         )
     )
 
+    # Initial map -> odom transform
+    nodes.append(
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="tf_map_to_odom",
+            arguments=[
+                "--frame-id", "map",
+                "--child-frame-id", "odom",
+            ],
+            output="screen",
+        )
+    )
+
+    # Initial odom -> pelvis transform
+    nodes.append(
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="tf_odom_to_pelvis",
+            arguments=[
+                "--frame-id", "odom",
+                "--child-frame-id", "pelvis",
+            ],
+            output="screen",
+        )
+    )
+
     # Base link alias for pelvis in robot_state_publisher tree
     nodes.append(
         Node(
