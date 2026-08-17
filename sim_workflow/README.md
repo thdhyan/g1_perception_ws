@@ -297,19 +297,81 @@ made `load_params_from_file()` raise `KeyError('model_state')`. Fixed
 Verified against a live headless sim run: real per-frame varying scores and
 pedestrian counts, not a frozen fallback value.
 
-Also added `class_filter` (default `"pedestrian"`, drops `car`/`cyclist`)
-and aligned `accumulate_frames` to the `max_hz` cadence (2 frames = 200ms
-at the Mid-360's 10Hz scan rate, matching a 5Hz inference cap 1:1 instead
-of the old 4-frame/400ms mismatched window). Achieved rate is ~4.0-4.2Hz
-against the 5Hz cap — real inference latency, not further tunable via
-these params. See [livox_detection/README.md](../src/livox_detection/README.md)
+Also added `class_filter` (default `"pedestrian"`, drops `car`/`cyclist`).
+`accumulate_frames` and `score_threshold` were retuned empirically after
+visual verification in RViz — see §9 below; the current values (6 frames,
+0.15) supersede the 2-frame/0.10 numbers this paragraph originally
+described. See [livox_detection/README.md](../src/livox_detection/README.md)
 for the full parameter reference.
 
 ### Moving pedestrian actor
-`g1_warehouse.sdf`'s five `human_1`..`human_5` models are static primitive
-geometry — no motion to test detection tracking against. Added a sixth,
-`human_walking`, using Gazebo Harmonic's `<actor>`/`<trajectory>` system
-(https://gazebosim.org/docs/harmonic/actors/): walks a straight 8m path
-(X=-3, Y: -4↔4, clear of the shelves and the static humans) at ~1.2 m/s,
-loops forever. Requires network access on first launch to fetch the actor
-mesh from Fuel (cached locally afterward, per Gazebo's usual behavior).
+`g1_warehouse.sdf`'s five `human_1`..`human_5` models were originally static
+primitive geometry (sphere/cylinder stick figures) — no motion to test
+detection tracking against, and geometrically nothing like a real human
+silhouette. Added a sixth, `human_walking`, using Gazebo Harmonic's
+`<actor>`/`<trajectory>` system (https://gazebosim.org/docs/harmonic/actors/):
+walks a straight 8m path (X=-3, Y: -4↔4, clear of the shelves and the static
+humans) at ~1.2 m/s, loops forever. Requires network access on first launch
+to fetch the actor mesh from Fuel (cached locally afterward, per Gazebo's
+usual behavior). `human_1`..`human_5` were later converted to the same mesh
+— see §9.
+
+---
+
+## 9. [2026-08-17] GUI visual verification: realistic human meshes, detector tuning
+
+Ran `sim_teleop.launch.py rviz:=true detection_algorithm:=voxelnext` with
+RViz and Gazebo GUI both on-screen to visually confirm detections, not just
+trust the log line. Two real issues only visible this way:
+
+**Primitive stick-figure humans went undetected.** `human_1`..`human_5`'s
+sphere/cylinder geometry (§8) doesn't return anything resembling a real
+human's LiDAR silhouette, and VoxelNeXt is a nuScenes-pretrained checkpoint
+that's never seen that geometry. Only the mesh-based `human_walking` actor
+was reliably detected. Fixed: converted all five to the same Fuel
+`walk.dae` mesh `human_walking` uses. A plain static `<model><visual><mesh>`
+renders a rigged mesh in its bind pose (T-pose) — animation only applies
+through Gazebo's `<actor>` system — so all five became stationary actors
+(two identical waypoints 10s apart, same position) purely to activate
+skinning without adding motion.
+
+**Detection threshold was picked from a single log line, not measured.**
+`score_threshold` traveled 0.10 → 0.30 → 0.20 → 0.15 this session, each
+step based on live counts against the 6 known humans in the scene, not
+guesswork:
+- 0.10 (original): noisy, up to 12 "detections" in one frame against 6
+  actual humans.
+- 0.30 (this doc's original design value, restored first): zero detections
+  over a 121-frame/30s window — too high, this nuScenes-domain-gapped model
+  rarely clears 0.3 even on real hits.
+- 0.20: sane counts (0-2/frame) but under-detected — only 2 of 6 humans
+  ever appeared.
+- 0.15 (current): consistent 0-2 detections/frame, real per-frame score
+  variation (0.18-0.38), matches the scene. `accumulate_frames` raised
+  2 → 6 alongside it (denser input, no motion-compensation cost since the
+  scene is mostly static — see §8's VoxelNeXt paragraph for the caveat on
+  the one moving actor).
+
+There is no single "correct" threshold here without fine-tuning the model
+on this sensor/environment combination — this is precision/recall tuning
+against a known ground truth, not a bug fix. Re-verify visually if the
+scene or checkpoint changes.
+
+![RViz: PointCloud2 + a VoxelNeXt pedestrian detection box, 0.23 confidence at 4.11m, in the pelvis frame](images/voxelnext_rviz_detection.png)
+
+![Gazebo: human_1-5 now rendering as posed mesh actors (natural stride, not T-pose), human_walking mid-stride in the foreground](images/gazebo_warehouse_humans.png)
+
+### Debugging lesson: orphaned processes break DDS domain creation
+Repeated kill+relaunch cycles during this tuning pass eventually made every
+node in a fresh launch fail with `rmw_create_node: failed to create domain`
+— not a code regression, an environment leak. Root cause: `wbc_node`
+(`g1_wbc`) was never in the kill list used earlier in this session (only
+`gz sim|rviz2|livox_detection_node|robot_state_pub|parameter_bridge` were
+matched), so three orphaned `wbc_node` processes from three earlier
+launches sat squatting on sequential DDS discovery ports (`7400`, `7442`,
+...) indefinitely — `ros2 launch` does not respawn or clean up children
+that outlive it if you kill the launch process out of order. Fix: kill by
+port ownership (`fuser <port>/udp`) when a domain-creation error appears,
+not just by the process names you remember starting. The standard
+`ros2-daemon` background process also holds a DDS port permanently — that
+one's normal, don't kill it looking for the leak.

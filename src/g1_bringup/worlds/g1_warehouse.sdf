@@ -164,215 +164,142 @@
 
     <!-- ── Realistic Stationary Humanoid Models (Anatomical: Head, Torso, Limbs) ── -->
 
-    <!-- Human 1: 4.0m Front Center (Blue Jacket, Dark Jeans) -->
-    <model name="human_1">
-      <static>true</static>
-      <pose>4.0 0.0 0.0 0 0 3.14159</pose>
-      <link name="link">
-        <visual name="head">
-          <pose>0 0 1.65 0 0 0</pose>
-          <geometry><sphere><radius>0.12</radius></sphere></geometry>
-          <material><ambient>0.9 0.75 0.65 1</ambient><diffuse>0.9 0.75 0.65 1</diffuse></material>
-        </visual>
-        <visual name="torso">
-          <pose>0 0 1.20 0 0 0</pose>
-          <geometry><cylinder><radius>0.18</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.2 0.35 0.75 1</ambient><diffuse>0.2 0.35 0.75 1</diffuse></material>
-        </visual>
-        <visual name="left_leg">
-          <pose>0 0.11 0.45 0 0 0</pose>
-          <geometry><cylinder><radius>0.08</radius><length>0.85</length></cylinder></geometry>
-          <material><ambient>0.15 0.15 0.22 1</ambient><diffuse>0.15 0.15 0.22 1</diffuse></material>
-        </visual>
-        <visual name="right_leg">
-          <pose>0 -0.11 0.45 0 0 0</pose>
-          <geometry><cylinder><radius>0.08</radius><length>0.85</length></cylinder></geometry>
-          <material><ambient>0.15 0.15 0.22 1</ambient><diffuse>0.15 0.15 0.22 1</diffuse></material>
-        </visual>
-        <visual name="left_arm">
-          <pose>0 0.26 1.15 0.15 0 0</pose>
-          <geometry><cylinder><radius>0.06</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.2 0.35 0.75 1</ambient><diffuse>0.2 0.35 0.75 1</diffuse></material>
-        </visual>
-        <visual name="right_arm">
-          <pose>0 -0.26 1.15 -0.15 0 0</pose>
-          <geometry><cylinder><radius>0.06</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.2 0.35 0.75 1</ambient><diffuse>0.2 0.35 0.75 1</diffuse></material>
-        </visual>
-        <collision name="collision">
-          <pose>0 0 0.9 0 0 0</pose>
-          <geometry><capsule><radius>0.22</radius><length>1.4</length></capsule></geometry>
-        </collision>
-      </link>
-    </model>
+    <!-- Human 1: 4.0m Front Center (stationary actor - see human_walking comment
+         below for why a plain static mesh renders as a T-pose; a single-spot
+         actor trajectory activates skinning without adding motion) -->
+    <actor name="human_1">
+      <skin>
+        <filename>https://fuel.gazebosim.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+      </skin>
+      <animation name="walk">
+        <filename>https://fuel.gazebosim.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0.0</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walk" tension="0.6">
+          <waypoint>
+            <time>0</time>
+            <pose>4.0 0.0 1.0 0 0 3.14159</pose>
+          </waypoint>
+          <waypoint>
+            <time>10</time>
+            <pose>4.0 0.0 1.0 0 0 3.14159</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
 
-    <!-- Human 2: 3.0m Front-Left (Green Sweater, Khaki Pants) -->
-    <model name="human_2">
-      <static>true</static>
-      <pose>3.0 3.0 0.0 0 0 -1.5708</pose>
-      <link name="link">
-        <visual name="head">
-          <pose>0 0 1.65 0 0 0</pose>
-          <geometry><sphere><radius>0.12</radius></sphere></geometry>
-          <material><ambient>0.85 0.7 0.6 1</ambient><diffuse>0.85 0.7 0.6 1</diffuse></material>
-        </visual>
-        <visual name="torso">
-          <pose>0 0 1.20 0 0 0</pose>
-          <geometry><cylinder><radius>0.18</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.2 0.65 0.35 1</ambient><diffuse>0.2 0.65 0.35 1</diffuse></material>
-        </visual>
-        <visual name="left_leg">
-          <pose>0 0.11 0.45 0 0 0</pose>
-          <geometry><cylinder><radius>0.08</radius><length>0.85</length></cylinder></geometry>
-          <material><ambient>0.6 0.5 0.35 1</ambient><diffuse>0.6 0.5 0.35 1</diffuse></material>
-        </visual>
-        <visual name="right_leg">
-          <pose>0 -0.11 0.45 0 0 0</pose>
-          <geometry><cylinder><radius>0.08</radius><length>0.85</length></cylinder></geometry>
-          <material><ambient>0.6 0.5 0.35 1</ambient><diffuse>0.6 0.5 0.35 1</diffuse></material>
-        </visual>
-        <visual name="left_arm">
-          <pose>0 0.26 1.15 0.15 0 0</pose>
-          <geometry><cylinder><radius>0.06</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.2 0.65 0.35 1</ambient><diffuse>0.2 0.65 0.35 1</diffuse></material>
-        </visual>
-        <visual name="right_arm">
-          <pose>0 -0.26 1.15 -0.15 0 0</pose>
-          <geometry><cylinder><radius>0.06</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.2 0.65 0.35 1</ambient><diffuse>0.2 0.65 0.35 1</diffuse></material>
-        </visual>
-        <collision name="collision">
-          <pose>0 0 0.9 0 0 0</pose>
-          <geometry><capsule><radius>0.22</radius><length>1.4</length></capsule></geometry>
-        </collision>
-      </link>
-    </model>
+    <!-- Human 2: 3.0m Front-Left (stationary actor) -->
+    <actor name="human_2">
+      <skin>
+        <filename>https://fuel.gazebosim.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+      </skin>
+      <animation name="walk">
+        <filename>https://fuel.gazebosim.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0.0</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walk" tension="0.6">
+          <waypoint>
+            <time>0</time>
+            <pose>3.0 3.0 1.0 0 0 -1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>10</time>
+            <pose>3.0 3.0 1.0 0 0 -1.5708</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
 
-    <!-- Human 3: 3.5m Front-Right (Orange High-Vis Jacket, Grey Pants) -->
-    <model name="human_3">
-      <static>true</static>
-      <pose>3.5 -2.8 0.0 0 0 1.5708</pose>
-      <link name="link">
-        <visual name="head">
-          <pose>0 0 1.65 0 0 0</pose>
-          <geometry><sphere><radius>0.12</radius></sphere></geometry>
-          <material><ambient>0.9 0.75 0.65 1</ambient><diffuse>0.9 0.75 0.65 1</diffuse></material>
-        </visual>
-        <visual name="torso">
-          <pose>0 0 1.20 0 0 0</pose>
-          <geometry><cylinder><radius>0.18</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.95 0.5 0.1 1</ambient><diffuse>0.95 0.5 0.1 1</diffuse></material>
-        </visual>
-        <visual name="left_leg">
-          <pose>0 0.11 0.45 0 0 0</pose>
-          <geometry><cylinder><radius>0.08</radius><length>0.85</length></cylinder></geometry>
-          <material><ambient>0.3 0.3 0.35 1</ambient><diffuse>0.3 0.3 0.35 1</diffuse></material>
-        </visual>
-        <visual name="right_leg">
-          <pose>0 -0.11 0.45 0 0 0</pose>
-          <geometry><cylinder><radius>0.08</radius><length>0.85</length></cylinder></geometry>
-          <material><ambient>0.3 0.3 0.35 1</ambient><diffuse>0.3 0.3 0.35 1</diffuse></material>
-        </visual>
-        <visual name="left_arm">
-          <pose>0 0.26 1.15 0.15 0 0</pose>
-          <geometry><cylinder><radius>0.06</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.95 0.5 0.1 1</ambient><diffuse>0.95 0.5 0.1 1</diffuse></material>
-        </visual>
-        <visual name="right_arm">
-          <pose>0 -0.26 1.15 -0.15 0 0</pose>
-          <geometry><cylinder><radius>0.06</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.95 0.5 0.1 1</ambient><diffuse>0.95 0.5 0.1 1</diffuse></material>
-        </visual>
-        <collision name="collision">
-          <pose>0 0 0.9 0 0 0</pose>
-          <geometry><capsule><radius>0.22</radius><length>1.4</length></capsule></geometry>
-        </collision>
-      </link>
-    </model>
+    <!-- Human 3: 3.5m Front-Right (stationary actor) -->
+    <actor name="human_3">
+      <skin>
+        <filename>https://fuel.gazebosim.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+      </skin>
+      <animation name="walk">
+        <filename>https://fuel.gazebosim.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0.0</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walk" tension="0.6">
+          <waypoint>
+            <time>0</time>
+            <pose>3.5 -2.8 1.0 0 0 1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>10</time>
+            <pose>3.5 -2.8 1.0 0 0 1.5708</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
 
-    <!-- Human 4: 6.0m Mid-Range Front (Red Hoodie, Dark Pants) -->
-    <model name="human_4">
-      <static>true</static>
-      <pose>6.0 1.5 0.0 0 0 3.14159</pose>
-      <link name="link">
-        <visual name="head">
-          <pose>0 0 1.65 0 0 0</pose>
-          <geometry><sphere><radius>0.12</radius></sphere></geometry>
-          <material><ambient>0.9 0.75 0.65 1</ambient><diffuse>0.9 0.75 0.65 1</diffuse></material>
-        </visual>
-        <visual name="torso">
-          <pose>0 0 1.20 0 0 0</pose>
-          <geometry><cylinder><radius>0.18</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.8 0.2 0.2 1</ambient><diffuse>0.8 0.2 0.2 1</diffuse></material>
-        </visual>
-        <visual name="left_leg">
-          <pose>0 0.11 0.45 0 0 0</pose>
-          <geometry><cylinder><radius>0.08</radius><length>0.85</length></cylinder></geometry>
-          <material><ambient>0.15 0.15 0.2 1</ambient><diffuse>0.15 0.15 0.2 1</diffuse></material>
-        </visual>
-        <visual name="right_leg">
-          <pose>0 -0.11 0.45 0 0 0</pose>
-          <geometry><cylinder><radius>0.08</radius><length>0.85</length></cylinder></geometry>
-          <material><ambient>0.15 0.15 0.2 1</ambient><diffuse>0.15 0.15 0.2 1</diffuse></material>
-        </visual>
-        <visual name="left_arm">
-          <pose>0 0.26 1.15 0.15 0 0</pose>
-          <geometry><cylinder><radius>0.06</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.8 0.2 0.2 1</ambient><diffuse>0.8 0.2 0.2 1</diffuse></material>
-        </visual>
-        <visual name="right_arm">
-          <pose>0 -0.26 1.15 -0.15 0 0</pose>
-          <geometry><cylinder><radius>0.06</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.8 0.2 0.2 1</ambient><diffuse>0.8 0.2 0.2 1</diffuse></material>
-        </visual>
-        <collision name="collision">
-          <pose>0 0 0.9 0 0 0</pose>
-          <geometry><capsule><radius>0.22</radius><length>1.4</length></capsule></geometry>
-        </collision>
-      </link>
-    </model>
+    <!-- Human 4: 6.0m Mid-Range Front (stationary actor) -->
+    <actor name="human_4">
+      <skin>
+        <filename>https://fuel.gazebosim.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+      </skin>
+      <animation name="walk">
+        <filename>https://fuel.gazebosim.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0.0</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walk" tension="0.6">
+          <waypoint>
+            <time>0</time>
+            <pose>6.0 1.5 1.0 0 0 3.14159</pose>
+          </waypoint>
+          <waypoint>
+            <time>10</time>
+            <pose>6.0 1.5 1.0 0 0 3.14159</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
 
-    <!-- Human 5: 3.5m Rear-Left (Purple Jacket, Black Pants) -->
-    <model name="human_5">
-      <static>true</static>
-      <pose>-3.5 2.5 0.0 0 0 -0.7854</pose>
-      <link name="link">
-        <visual name="head">
-          <pose>0 0 1.65 0 0 0</pose>
-          <geometry><sphere><radius>0.12</radius></sphere></geometry>
-          <material><ambient>0.85 0.7 0.6 1</ambient><diffuse>0.85 0.7 0.6 1</diffuse></material>
-        </visual>
-        <visual name="torso">
-          <pose>0 0 1.20 0 0 0</pose>
-          <geometry><cylinder><radius>0.18</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.6 0.2 0.7 1</ambient><diffuse>0.6 0.2 0.7 1</diffuse></material>
-        </visual>
-        <visual name="left_leg">
-          <pose>0 0.11 0.45 0 0 0</pose>
-          <geometry><cylinder><radius>0.08</radius><length>0.85</length></cylinder></geometry>
-          <material><ambient>0.12 0.12 0.15 1</ambient><diffuse>0.12 0.12 0.15 1</diffuse></material>
-        </visual>
-        <visual name="right_leg">
-          <pose>0 -0.11 0.45 0 0 0</pose>
-          <geometry><cylinder><radius>0.08</radius><length>0.85</length></cylinder></geometry>
-          <material><ambient>0.12 0.12 0.15 1</ambient><diffuse>0.12 0.12 0.15 1</diffuse></material>
-        </visual>
-        <visual name="left_arm">
-          <pose>0 0.26 1.15 0.15 0 0</pose>
-          <geometry><cylinder><radius>0.06</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.6 0.2 0.7 1</ambient><diffuse>0.6 0.2 0.7 1</diffuse></material>
-        </visual>
-        <visual name="right_arm">
-          <pose>0 -0.26 1.15 -0.15 0 0</pose>
-          <geometry><cylinder><radius>0.06</radius><length>0.65</length></cylinder></geometry>
-          <material><ambient>0.6 0.2 0.7 1</ambient><diffuse>0.6 0.2 0.7 1</diffuse></material>
-        </visual>
-        <collision name="collision">
-          <pose>0 0 0.9 0 0 0</pose>
-          <geometry><capsule><radius>0.22</radius><length>1.4</length></capsule></geometry>
-        </collision>
-      </link>
-    </model>
+    <!-- Human 5: 3.5m Rear-Left (stationary actor) -->
+    <actor name="human_5">
+      <skin>
+        <filename>https://fuel.gazebosim.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+      </skin>
+      <animation name="walk">
+        <filename>https://fuel.gazebosim.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0.0</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walk" tension="0.6">
+          <waypoint>
+            <time>0</time>
+            <pose>-3.5 2.5 1.0 0 0 -0.7854</pose>
+          </waypoint>
+          <waypoint>
+            <time>10</time>
+            <pose>-3.5 2.5 1.0 0 0 -0.7854</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
 
     <!--
       Moving pedestrian actor (Gazebo Harmonic actor system, see
