@@ -1,0 +1,29 @@
+# Core deep learning with CUDA 12.1
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.3.1+cu121
+torchvision==0.18.1+cu121
+spconv-cu121>=2.3.6
+
+# ONNX & runtime
+onnxruntime>=1.18.0
+
+# Scientific computing & math
+numpy>=1.24.0,<2.0.0
+scipy>=1.10.0
+pyquaternion>=0.9.9
+
+# 3D Point cloud & geometry processing
+open3d>=0.18.0
+trimesh>=4.0.0
+shapely>=2.0.0
+scikit-image>=0.21.0
+SharedArray>=3.2.3
+
+# Accelerators & utilities
+numba>=0.58.0
+llvmlite>=0.41.0
+easydict>=1.10
+PyYAML>=6.0
+tensorboardX>=2.6.0
+tqdm>=4.65.0
+rich>=13.0.0
