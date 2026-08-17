@@ -225,7 +225,7 @@ Order of checks:
 5. **Does the sensor survive URDF→SDF?** This is where silent drops happen:
    ```bash
    gz sdf -p src/g1_description/urdf/g1_29dof.urdf > /tmp/g1.sdf
-   grep -c "type='imu'" /tmp/g1.sdf     # must be 1
+   grep -c "type='imu'" /tmp/g1.sdf     # must be 3 (pelvis, mid360, d435 -- see §8)
    ```
    A `<gazebo reference="X">` whose `X` is not a **link** (typo, or an
    inertia-less link collapsed to a `<frame>`) is dropped without error.
@@ -235,3 +235,81 @@ Order of checks:
 7. **Height** — read `world → g1` translation z from `/tf`. Do **not** read
    `base_link → pelvis`; it is a static identity (z=0) and will read as a
    false collapse.
+
+   > **Note (2026-08-17, §8 below):** items 6-7 describe the single-tree
+   > `world → g1 → base_link → pelvis` architecture from the original
+   > verification run. That architecture was superseded by the dual-tree
+   > design (`warehouse → g1 → gt_base_link → gt_pelvis` for ground truth,
+   > `map → odom → pelvis → base_link` for proprioception/SLAM) — there is
+   > no longer a single `world`-rooted tree, and `base_link` now hangs off
+   > `pelvis` rather than the other way around. See §8 for the current
+   > architecture and how to sanity-check it.
+
+---
+
+## 8. [2026-08-17] TF continuity, LIO crash fix, VoxelNeXt detector, moving actor
+
+Follow-up session against the dual-tree architecture from
+[TASKS.md](../TASKS.md) §3.4 / [UPDATES.md](../UPDATES.md). Four separate
+fixes, landed as separate commits across `g1_perception_ws`,
+`g1_description`, and `plain_slam_ros2` (the latter two are submodules,
+forked to `thdhyan/*` since this session had no push access to their
+upstreams — see `.gitmodules`).
+
+### TF tree: multi-parent conflict + no startup fallback
+`base_link → pelvis` (static, left over from the pre-dual-tree design)
+collided with `lio_3d_node`'s dynamic `odom → pelvis` broadcast — two
+publishers claiming different parents for the same frame. Flipped to
+`pelvis → base_link` (pelvis's only parent is now `odom`) and added
+identity fallback statics for `map → odom` / `odom → pelvis` so the tree is
+connected from `t=0` instead of only after `lio_3d_node`'s first scan.
+Also removed a dead `g1_29dof → gt_base_link` static publisher that
+duplicated the ground-truth tree's real `g1 → gt_base_link` parent.
+
+### lio_3d_node SIGABRT
+Root-caused via `gdb` against live sim topics (not guesswork — the crash
+wasn't reproducible from reading the code alone): `JointOptimizer::Estimate()`
+can produce a non-finite Gauss-Newton step when scan-to-map correspondences
+are too few (near-singular `H`/`P` inversion). The resulting NaN/Inf
+reaches `Sophus::SO3::exp()`, which hard-`abort()`s — a raw signal, not a
+C++ exception, so it skipped straight past the existing try/catch around
+`SetScanCloud()`. Fixed with a finite-check guard before `exp()`.
+
+Separately (real cause of the *non-convergence*, distinct from the crash):
+`lio_3d_params.yaml`'s `imu_to_lidar` extrinsic was calibrated for an IMU at
+`torso_link`'s origin, but the launch files feed `lio_3d_node` the **pelvis**
+IMU — a different link, off by ~14cm/5cm in Z/X. Recomputed from the URDF
+kinematic chain. (`waist_yaw_joint`/`waist_roll_joint`/`torso_joint` are all
+`type="fixed"` in this URDF, so pelvis/torso/lidar are one rigid body in
+sim — a constant extrinsic is valid here, no need to source LIO from the
+lidar's own onboard IMU instead.)
+
+Added onboard IMU sensors for Mid-360 (`/livox/imu`) and D435i
+(`/camera/imu`) to the URDF, matching real-robot topic parity (`/livox/imu`
+is documented in [PLAN.md](../PLAN.md) §4 but wasn't previously simulated).
+
+### VoxelNeXt detector: wrong checkpoint, now verified working
+`detection_algorithm:=voxelnext` was silently falling back to a PointPillar
+clustering heuristic every launch — the launch files were passing the
+CenterPoint/PointPillar checkpoint to it regardless of algorithm, which
+made `load_params_from_file()` raise `KeyError('model_state')`. Fixed
+(`VOXELNEXT_CHECKPOINT_PATH`, see [livox_detection/README.md](../src/livox_detection/README.md)).
+Verified against a live headless sim run: real per-frame varying scores and
+pedestrian counts, not a frozen fallback value.
+
+Also added `class_filter` (default `"pedestrian"`, drops `car`/`cyclist`)
+and aligned `accumulate_frames` to the `max_hz` cadence (2 frames = 200ms
+at the Mid-360's 10Hz scan rate, matching a 5Hz inference cap 1:1 instead
+of the old 4-frame/400ms mismatched window). Achieved rate is ~4.0-4.2Hz
+against the 5Hz cap — real inference latency, not further tunable via
+these params. See [livox_detection/README.md](../src/livox_detection/README.md)
+for the full parameter reference.
+
+### Moving pedestrian actor
+`g1_warehouse.sdf`'s five `human_1`..`human_5` models are static primitive
+geometry — no motion to test detection tracking against. Added a sixth,
+`human_walking`, using Gazebo Harmonic's `<actor>`/`<trajectory>` system
+(https://gazebosim.org/docs/harmonic/actors/): walks a straight 8m path
+(X=-3, Y: -4↔4, clear of the shelves and the static humans) at ~1.2 m/s,
+loops forever. Requires network access on first launch to fetch the actor
+mesh from Fuel (cached locally afterward, per Gazebo's usual behavior).
