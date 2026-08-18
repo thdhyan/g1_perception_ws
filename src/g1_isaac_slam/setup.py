@@ -25,6 +25,8 @@ setup(
     license="MIT",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": [],
+        "console_scripts": [
+            "depth_to_uint16 = g1_isaac_slam.depth_to_uint16:main",
+        ],
     },
 )

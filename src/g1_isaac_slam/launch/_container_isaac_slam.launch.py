@@ -6,22 +6,20 @@ D435i topics. Adapted from NVIDIA's own
 isaac_ros_visual_slam_realsense_rgbd.launch.py example (same RGBD mode,
 num_cameras=1, depth_camera_id=0) with frames/topics swapped for this sim:
   - image/camera_info: /camera/color/image_raw, /camera/color/camera_info
-  - depth: /camera/depth/image_rect_raw (Gazebo rgbd_camera sensor — 32FC1
-    meters, NOT the 16UC1-mm RealSense aligned_depth format the reference
-    example assumes.
-    CONFIRMED BROKEN (2026-08-18): cuVSLAM's RGBD path does not honour the
-    ROS encoding field — it reinterprets the incoming buffer's raw bytes as
-    uint16 unconditionally. Proven with enable_debug_mode dumps: every
-    /tmp/cuvslam_debug/depths/*.npy is 614480 bytes = 640*480*2 + npy header,
-    dtype uint16, values min 0 / max 65535 / mean ~24540 with adjacent pixels
-    like [16633 16342 29888 16342 15846] — i.e. float32 mantissa bytes read
-    as integers, pure garbage, not depth. depth_scale_factor cannot fix this;
-    it scales after the (already wrong) integer read. The fix is a conversion
-    node upstream of cuVSLAM: 32FC1 metres -> 16UC1 millimetres, then
-    depth_scale_factor=0.001. NOT YET WRITTEN.
-    Note the same dumps confirm intrinsics/extrinsics reach cuVSLAM
-    correctly (stereo.edex: focal 337.22, principal 320/240, size 640x480,
-    valid rotation+translation) — depth encoding is the only broken input.)
+  - depth: /camera/depth/image_16uc1, produced by this file's depth_to_uint16
+    node from the sim's /camera/depth/image_rect_raw. The sim (Gazebo
+    rgbd_camera) publishes 32FC1 metres, but cuVSLAM's RGBD path does not
+    honour the ROS encoding field — it reinterprets the buffer's raw bytes as
+    uint16 unconditionally. Proven 2026-08-18 with enable_debug_mode dumps
+    while feeding it 32FC1 directly: every /tmp/cuvslam_debug/depths/*.npy was
+    614480 bytes = 640*480*2 + npy header, dtype uint16, min 0 / max 65535 /
+    mean ~24540, adjacent pixels like [16633 16342 29888 16342 15846] —
+    float32 mantissa bytes read as integers, not depth. depth_scale_factor
+    cannot fix that (it scales *after* the wrong read), hence the converter
+    node + depth_scale_factor=0.001 below.
+    Those same dumps confirmed intrinsics/extrinsics reach cuVSLAM correctly
+    (stereo.edex: focal 337.22, principal 320/240, size 640x480, valid
+    rotation+translation) — depth encoding was the only broken input.)
   - base_frame: pelvis (this sim's real base link, not camera_link)
   - camera_optical_frames: camera_color_optical_frame — NVIDIA's own RGBD example
     uses a REP-103 optical-convention frame (Z-forward/X-right/Y-down), not the
@@ -48,7 +46,25 @@ from launch_ros.actions import ComposableNodeContainer, Node
 from launch_ros.descriptions import ComposableNode
 
 
+SIM_DEPTH_TOPIC = '/camera/depth/image_rect_raw'   # 32FC1 metres, straight from Gazebo
+DEPTH_TOPIC = '/camera/depth/image_16uc1'          # 16UC1 mm, what cuVSLAM/nvblox actually read
+
+
 def generate_launch_description():
+    # Must come up before the consumers below -- see docstring; without it
+    # cuVSLAM silently tracks on noise instead of erroring.
+    depth_to_uint16_node = Node(
+        package='g1_isaac_slam',
+        executable='depth_to_uint16',
+        name='depth_to_uint16',
+        parameters=[{
+            'use_sim_time': True,
+            'input_topic': SIM_DEPTH_TOPIC,
+            'output_topic': DEPTH_TOPIC,
+        }],
+        output='screen',
+    )
+
     visual_slam_node = ComposableNode(
         package='isaac_ros_visual_slam',
         plugin='nvidia::isaac_ros::visual_slam::VisualSlamNode',
@@ -56,9 +72,7 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': True,
             'tracking_mode': 2,             # RGBD
-            'depth_scale_factor': 1.0,      # sim depth is float32 metres -- but cuVSLAM reads the
-                                            # buffer as uint16 regardless, so this param is moot
-                                            # until a 32FC1->16UC1-mm converter exists (see docstring)
+            'depth_scale_factor': 0.001,    # depth_to_uint16 feeds 16UC1 millimetres (see docstring)
             'enable_image_denoising': False,
             'rectified_images': False,  # NOTE: True breaks single-camera RGBD mode entirely --
                                          # ("Rectified stereo camera mode only works with 1+ stereo
@@ -94,7 +108,7 @@ def generate_launch_description():
         remappings=[
             ('visual_slam/image_0', '/camera/color/image_raw'),
             ('visual_slam/camera_info_0', '/camera/color/camera_info'),
-            ('visual_slam/depth_0', '/camera/depth/image_rect_raw'),
+            ('visual_slam/depth_0', DEPTH_TOPIC),
         ],
     )
 
@@ -128,7 +142,7 @@ def generate_launch_description():
         remappings=[
             ('color/image', '/camera/color/image_raw'),
             ('color/camera_info', '/camera/color/camera_info'),
-            ('depth/image', '/camera/depth/image_rect_raw'),
+            ('depth/image', DEPTH_TOPIC),
             ('depth/camera_info', '/camera/color/camera_info'),
         ],
         output='screen',
@@ -141,6 +155,7 @@ def generate_launch_description():
     # just no launch wiring here yet.
     return LaunchDescription([
         DeclareLaunchArgument('people_segmentation', default_value='false'),
+        depth_to_uint16_node,
         visual_slam_container,
         nvblox_node,
     ])
