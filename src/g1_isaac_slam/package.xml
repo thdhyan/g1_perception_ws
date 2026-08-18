@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypemirror="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>g1_isaac_slam</name>
+  <version>0.1.0</version>
+  <description>
+    Isaac ROS cuVSLAM + nvblox (RGBD mode, GPU) + PeopleSemSegNet human
+    segmentation for the Unitree G1, run in a Docker container alongside the
+    native plain_slam_ros2 CPU SLAM for direct comparison. Publishes to
+    isolated vslam_odom/vslam_map frames so both stacks can run at once.
+  </description>
+  <maintainer email="th.dhyan.us@gmail.com">thakk100</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>g1_bringup</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

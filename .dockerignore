@@ -1,0 +1,6 @@
+# Build context for isaac_ros_ws/Dockerfile.g1_isaac_slam is the workspace
+# root (14G) but the image only needs src/g1_isaac_slam. Exclude everything,
+# then re-include just that package.
+*
+!src/g1_isaac_slam
+src/g1_isaac_slam/**/__pycache__

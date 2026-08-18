@@ -1,0 +1,17 @@
+FROM nvcr.io/nvidia/isaac/ros:isaac_ros_89df02a734965ed64c227ef531c09d65-amd64
+
+RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      --no-install-recommends \
+      ros-jazzy-isaac-ros-visual-slam ros-jazzy-isaac-ros-nvblox ros-jazzy-isaac-ros-unet && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Host uses RMW_IMPLEMENTATION=rmw_cyclonedds_cpp (setup_g1_env.sh) -- must match
+# in-container or cross-container DDS discovery silently fails.
+RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      --no-install-recommends \
+      ros-jazzy-rmw-cyclonedds-cpp && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY src/g1_isaac_slam /opt/g1_ws/src/g1_isaac_slam
+RUN . /opt/ros/jazzy/setup.sh && cd /opt/g1_ws && colcon build --symlink-install
+RUN echo "source /opt/g1_ws/install/setup.bash" >> /root/.bashrc
