@@ -87,6 +87,9 @@ print(s.recv(4096).decode())"
 `{"ok": true, "fsm_id": 501}` means it is connected to the robot.
 `{"cmd": "get_arm_actions"}` lists every arm gesture the SDK accepts.
 
+If a velocity command comes back `{"ok": false, "error": "unknown cmd:
+set_velocity"}`, the running bridge predates that command — restart it.
+
 ## 3. Live 3D detection
 
 ```bash
@@ -125,33 +128,71 @@ ros2 launch g1_bringup real_live_detection.launch.py algorithm:=pointpillar \
   checkpoint_path:=/home/thakk100/Projects/Thesis/livox_detection/pt/livox_model_1.pt
 ```
 
-## 4. Human selection
+## 4. Human sorting
 
 ```bash
-# sorts detections by distance -> /g1/sorted_humans
 ros2 run livox_detection human_distance_sorter_node --ros-args \
   -p input_topic:=/g1/detections/livox -p output_topic:=/g1/sorted_humans -p min_score:=0.1
-
-# keyboard target selection
-ros2 run livox_detection human_keyboard_selector_node --ros-args \
-  -p input_topic:=/g1/sorted_humans
 ```
 
-## 5. Driving the robot (WASD)
+Sorts detections by distance onto `/g1/sorted_humans`, which is what the console
+below selects from.
 
-Needs the bridge from step 2. **The robot walks.**
+## 5. Keyboard console — walking, selection, gestures
+
+One terminal for all three. Needs the bridge from step 2. **The robot walks.**
+
+```bash
+ros2 run livox_detection human_keyboard_selector_node --ros-args \
+  -p input_topic:=/g1/sorted_humans \
+  -p linear_speed:=0.3 -p yaw_rate:=0.5
+```
+
+| Keys | |
+|---|---|
+| `W` `A` `S` `D` | walk forward / strafe left / back / strafe right |
+| `Q` `E` | turn left / right |
+| `SPACE` | stop |
+| `Z` `X` | linear speed −/+ 0.05 m/s |
+| `-` `+` | yaw rate −/+ 0.10 rad/s |
+| `1`–`9` | lock onto human #1..#9 |
+| `0` / `C` | clear selection |
+| `R` | rescan: fresh cloud + re-run detection |
+| `T` | re-publish the frozen snapshot cloud, no re-detection |
+| `V` `B` `N` `M` `,` `.` | shake hand, high wave, clap, high five, heart, hug |
+| `ESC` | quit (halts the robot on the way out) |
+
+Motion is hold-to-move: velocity decays to zero `key_hold_timeout` (0.5 s) after
+the last keypress, so letting go stops the robot rather than leaving it walking.
+
+The console talks to `robot_bridge`'s socket directly — `cmd_vel_bridge` is only
+needed when something else (Nav2, a follow node) drives via `/cmd_vel`:
 
 ```bash
 ros2 run g1_control cmd_vel_bridge
 ```
 
+`g1_nav keyboard_teleop` still exists and publishes `/g1/cmd_vel`; it needs
+`cmd_vel_bridge` and does not do selection or gestures.
+
+## 5b. Snapshot pipeline and walk-up-and-greet
+
+The 2-pass snapshot pipeline (accumulate a dense cloud, then detect once) with
+the follow-and-greet controller:
+
 ```bash
-ros2 run g1_nav keyboard_teleop --ros-args \
-  -p cmd_vel_topic:=/cmd_vel -p linear_speed:=0.3 -p yaw_rate:=0.5
+ros2 launch g1_bringup real_human_follow.launch.py \
+  algorithm:=voxelnext \
+  offset_ground:=-0.3 \
+  score_threshold:=0.2 \
+  standoff_distance:=0.80 \
+  greeting_action:=shake_hand \
+  auto_execute:=false
 ```
 
-`W`/`S` forward/back, `A`/`D` strafe, `Q`/`E` turn, `SPACE` brake,
-`Z`/`C` speed −/+, `U`/`O` turn rate −/+.
+`auto_execute:=false` keeps the robot still until a target is selected — start
+there. `greeting_action` accepts `shake_hand`, `low_wave`, `high_wave`,
+`wave_and_shake`, `none`, or any bridge action name.
 
 ## 6. Recording
 

@@ -84,6 +84,9 @@ class G1Robot:
             self.arm_client = None
 
         self._lock = threading.Lock()
+        # Tracks whether set_velocity() has already put the robot in walk mode, so
+        # a streaming caller does not re-poll the FSM on every command.
+        self._walking = False
 
     def get_fsm(self) -> int:
         code, fsm_id = self.client.GetFsmId()
@@ -124,6 +127,25 @@ class G1Robot:
         self.client.SetFsmId(FSM_READY_STAND)
         time.sleep(SETTLE_TIME)
         return self._switch_to_walk_with_retry()
+
+    def set_velocity(self, vx: float, vy: float, wz: float, duration: float = 0.3):
+        """One non-blocking velocity command, for teleop and any other continuous
+        controller streaming at a fixed rate.
+
+        move()/rotate() below are distance/angle goals: they block the dispatch
+        lock for the whole traversal, so a caller sending 10 commands a second
+        would queue minutes of motion. Here the caller owns the loop, and
+        `duration` is the SDK's own watchdog -- if the stream stops, the robot
+        halts on its own after that long without needing an explicit stop.
+
+        ensure_walk_mode() is only called when leaving zero velocity, since it
+        polls the FSM and would otherwise run on every streamed command.
+        """
+        if abs(vx) > 1e-3 or abs(vy) > 1e-3 or abs(wz) > 1e-3:
+            if not self._walking:
+                self.ensure_walk_mode()
+                self._walking = True
+        self.client.SetVelocity(vx, vy, wz, duration=duration)
 
     def move(self, dx: float, dy: float, speed: float = DEFAULT_LINEAR_SPEED):
         self.ensure_walk_mode()
@@ -187,6 +209,7 @@ class G1Robot:
             self.client.SetVelocity(0.0, 0.0, 0.0, duration=0.2)
             time.sleep(0.05)
         self.client.StopMove()
+        self._walking = False
 
     def execute_arm_action(self, action_name_or_id):
         """Execute action via G1ArmActionClient if available, with action_map lookups."""
@@ -284,6 +307,10 @@ def dispatch(robot: G1Robot, req: dict) -> dict:
         elif cmd == "move":
             robot.move(float(req.get("dx", 0.0)), float(req.get("dy", 0.0)),
                        float(req.get("speed", DEFAULT_LINEAR_SPEED)))
+            return {"ok": True}
+        elif cmd == "set_velocity":
+            robot.set_velocity(float(req.get("vx", 0.0)), float(req.get("vy", 0.0)),
+                               float(req.get("wz", 0.0)), float(req.get("duration", 0.3)))
             return {"ok": True}
         elif cmd == "rotate":
             robot.rotate(float(req.get("degrees", 0.0)),

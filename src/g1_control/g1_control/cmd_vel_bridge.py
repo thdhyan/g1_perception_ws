@@ -91,6 +91,10 @@ class CmdVelBridge(Node):
         self.create_subscription(Twist, "/cmd_vel", self.on_cmd_vel, 10)
 
         period = 1.0 / publish_hz
+        # Each velocity command carries its own SDK-side watchdog. Two ticks'
+        # worth means a dropped tick does not make the gait stutter, while a
+        # crashed bridge still halts the robot within ~0.2s.
+        self.cmd_duration = max(0.2, 2.0 * period)
         self.create_timer(period, self.on_publish_timer)
 
         self.get_logger().info(
@@ -123,7 +127,12 @@ class CmdVelBridge(Node):
                 try:
                     resp = send_command_with_retry(
                         self.socket_path,
-                        {"command": "move", "vx": vx, "vy": vy, "wz": wz},
+                        # robot_bridge keys the request on "cmd", not "command", and
+                        # its "move" is a blocking distance goal -- streaming into it
+                        # at publish_hz would queue minutes of walking. "set_velocity"
+                        # is the non-blocking per-tick form.
+                        {"cmd": "set_velocity", "vx": vx, "vy": vy, "wz": wz,
+                         "duration": self.cmd_duration},
                         self.get_logger(),
                     )
                     if not resp.get("ok"):
@@ -141,7 +150,7 @@ class CmdVelBridge(Node):
                 try:
                     resp = send_command_with_retry(
                         self.socket_path,
-                        {"command": "stop"},
+                        {"cmd": "stop"},
                         self.get_logger(),
                     )
                     if not resp.get("ok"):
