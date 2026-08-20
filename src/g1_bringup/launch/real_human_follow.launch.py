@@ -46,7 +46,15 @@ def generate_launch_description():
         robot_desc = f.read()
 
     # Workspace root resolution for VoxelNeXt config/model paths
-    ws_root = Path(__file__).resolve().parents[4]
+    # Walk up to the workspace root rather than counting parents: this file is
+    # reached through install/ or, under --symlink-install, through src/, and the
+    # two are at different depths. A fixed parents[N] silently lands outside the
+    # workspace, pcdet then fails to import, and the detector degrades to
+    # PointPillar clustering with only a warning.
+    ws_root = next(
+        (p for p in Path(__file__).resolve().parents if (p / "VoxelNeXt").is_dir()),
+        Path(__file__).resolve().parents[4],
+    )
     voxelnext_cfg_default = str(
         ws_root / "VoxelNeXt" / "tools" / "cfgs" / "nuscenes_models" / "cbgs_voxel0075_voxelnext.yaml"
     )
@@ -80,6 +88,15 @@ def generate_launch_description():
             "score_threshold",
             default_value="0.15",
             description="Confidence threshold for 3D human detection",
+        ),
+        DeclareLaunchArgument(
+            "offset_ground",
+            default_value="-0.3",
+            description=("Z-shift (m) applied before inference and undone on the output "
+                         "boxes -- whatever puts the ground where the nuScenes-trained "
+                         "model expects it, not the sensor height. Measured on the real "
+                         "robot (ground at z=-1.27 in mid360_link): a person at 4.3m "
+                         "scores 0.28 at -0.3 and only 0.14 at the old sim value of 1.33"),
         ),
         DeclareLaunchArgument(
             "collect_frames",
@@ -136,17 +153,38 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "joint_state_publisher",
-            default_value="true",
-            description="Whether to launch dummy joint_state_publisher when robot /joint_states is offline",
+            default_value="false",
+            description=("Whether to launch the dummy joint_state_publisher. Only meaningful "
+                         "with publish_tf:=true; against the real robot it publishes the URDF "
+                         "zero pose over the robot's real encoder angles"),
+        ),
+        DeclareLaunchArgument(
+            "publish_tf",
+            default_value="false",
+            description=("Whether the LAPTOP publishes the robot's TF tree. False against the "
+                         "real robot, which computes its own -- see the comment below. True "
+                         "only for bag playback or a robot whose sensor launch is not running"),
         ),
 
-        # ── 1. Robot State Publisher & TF ─────────────────────────────────────
+        # ── 1. Laptop-side TF -- OFF by default against the real robot ────────
+        #
+        # The robot runs its own robot_state_publisher fed by lowstate_to_jointstate,
+        # so it already publishes /tf, /tf_static and /robot_description from real
+        # encoder angles. Running these here as well is actively harmful: the dummy
+        # joint_state_publisher emits the URDF zero pose, two authorities on the same
+        # frames produce TF_OLD_DATA storms, and the robot (Foxy) cannot deserialise
+        # what the laptop (Jazzy) publishes, so it drowns in
+        # 'invalid data size ... serdata.cpp:308'. Jazzy reads Foxy fine, which is why
+        # simply consuming the robot's TF works.
+        #
+        # publish_tf:=true is for bag playback or a robot without its sensor launch up.
         Node(
             package="robot_state_publisher",
             executable="robot_state_publisher",
             name="robot_state_publisher",
             output="screen",
             parameters=[{"robot_description": robot_desc, "use_sim_time": False}],
+            condition=IfCondition(LaunchConfiguration("publish_tf")),
         ),
         Node(
             package="joint_state_publisher",
@@ -162,14 +200,13 @@ def generate_launch_description():
         ),
 
         # ── 1b. Sensor frame binding ─────────────────────────────────────────
-        # The Livox driver publishes clouds in 'livox_frame'; the URDF chain
-        # ends at 'mid360_link'. Without this identity link the tree is broken
-        # between the two and detections cannot be transformed into 'pelvis' --
-        # inference still runs, so the symptom is "detections but no TF".
-        # sim.launch.py has always published this; the real-robot launch did
-        # not. Publish it here rather than on the robot: the robot is on Foxy
-        # and the laptop on Jazzy, and TF/String messages do not survive that
-        # CDR-encoding gap (see the serdata.cpp:308 errors).
+        # For sources that publish clouds in 'livox_frame' while the URDF chain
+        # ends at 'mid360_link': without the identity link the tree is split and
+        # detections cannot reach 'pelvis' (inference still runs, so the symptom
+        # is "detections but no TF").
+        #
+        # The real robot does NOT need this -- its Livox driver is configured with
+        # frame_id=mid360_link. Bags recorded before that, and sim, still do.
         Node(
             package="tf2_ros",
             executable="static_transform_publisher",
@@ -177,6 +214,7 @@ def generate_launch_description():
             arguments=["--frame-id", "mid360_link", "--child-frame-id", "livox_frame"],
             parameters=[{"use_sim_time": False}],
             output="log",
+            condition=IfCondition(LaunchConfiguration("publish_tf")),
         ),
 
         # ── 2. Snapshot 3D Detection Pipeline Node ────────────────────────────
@@ -196,7 +234,7 @@ def generate_launch_description():
                 "collect_frames": LaunchConfiguration("collect_frames"),
                 "collect_duration_sec": LaunchConfiguration("collect_duration_sec"),
                 "auto_start": True,
-                "offset_ground": 1.33,
+                "offset_ground": LaunchConfiguration("offset_ground"),
                 "enable_cli_input": False,
             }],
         ),

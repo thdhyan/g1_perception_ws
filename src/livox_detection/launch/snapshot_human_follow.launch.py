@@ -35,11 +35,12 @@ def generate_launch_description():
     )
     offset_ground_arg = DeclareLaunchArgument(
         "offset_ground",
-        default_value="1.33",
+        default_value="-0.3",
         description=("Z-shift (m) applied to points before inference and subtracted from "
-                     "output boxes -- effectively the sensor height above ground. Should "
-                     "match the Mid-360's actual mount height on the G1; a wrong value "
-                     "moves the ground plane and makes the model miss nearby people."),
+                     "output boxes -- whatever puts the ground where the nuScenes-trained "
+                     "model expects it, NOT the sensor height. Measured on the real robot "
+                     "(ground at z=-1.27 in mid360_link): a person at 4.3m scores 0.28 at "
+                     "-0.3, 0.24 at -0.45, and only 0.14 at the old sim value of 1.33."),
     )
     collect_frames_arg = DeclareLaunchArgument(
         "collect_frames",
@@ -93,13 +94,18 @@ def generate_launch_description():
     )
     jsp_arg = DeclareLaunchArgument(
         "joint_state_publisher",
-        default_value="true",
-        description="Whether to launch dummy joint_state_publisher",
+        default_value="false",
+        description=("Whether to launch the dummy joint_state_publisher. Only meaningful "
+                     "with publish_tf:=true; against the real robot it publishes the URDF "
+                     "zero pose over the robot's real encoder angles"),
     )
     publish_tf_arg = DeclareLaunchArgument(
         "publish_tf",
         default_value="false",
-        description="Whether to publish static TFs from laptop",
+        description=("Whether the LAPTOP publishes the robot's TF tree. False against the "
+                     "real robot, which computes its own from real encoders -- see the "
+                     "comment on the nodes below. True only for bag playback or a robot "
+                     "whose sensor launch is not running"),
     )
 
     # Load G1 URDF
@@ -127,13 +133,25 @@ def generate_launch_description():
         jsp_arg,
         publish_tf_arg,
 
-        # 1. Robot State Publisher (URDF Model for RViz)
+        # 1. Laptop-side TF -- OFF by default against the real robot.
+        #
+        # The robot runs its own robot_state_publisher fed by lowstate_to_jointstate,
+        # so it already publishes /tf, /tf_static and /robot_description from real
+        # encoder angles. Running these here as well is actively harmful: the dummy
+        # joint_state_publisher emits the URDF zero pose, two authorities on the same
+        # frames produce TF_OLD_DATA storms, and the robot (Foxy) cannot deserialise
+        # what the laptop (Jazzy) publishes, so it drowns in
+        # 'invalid data size ... serdata.cpp:308'. Jazzy reads Foxy fine, which is why
+        # simply consuming the robot's TF works.
+        #
+        # publish_tf:=true is for bag playback or a robot without its sensor launch up.
         Node(
             package="robot_state_publisher",
             executable="robot_state_publisher",
             name="robot_state_publisher",
             output="screen",
             parameters=[{"robot_description": robot_desc, "use_sim_time": False}],
+            condition=IfCondition(LaunchConfiguration("publish_tf")),
         ),
         Node(
             package="joint_state_publisher",
@@ -148,14 +166,14 @@ def generate_launch_description():
             condition=IfCondition(LaunchConfiguration("joint_state_publisher")),
         ),
 
-        # 1b. Sensor frame binding: the Livox driver publishes clouds in
-        # 'livox_frame' while the URDF chain ends at 'mid360_link'. Without this
-        # identity link the tree is split between the two and detections cannot
-        # be transformed into 'pelvis' -- inference still runs, so the symptom
-        # is "detections appear but have no TF". sim.launch.py has always
-        # published this. Publish it laptop-side: the robot is on Foxy and the
-        # laptop on Jazzy, and TF/String messages do not survive that CDR gap
-        # (the rmw_cyclonedds serdata.cpp:308 errors).
+        # 1b. Sensor frame binding, for sources that publish clouds in 'livox_frame'
+        # while the URDF chain ends at 'mid360_link' -- without the identity link the
+        # tree is split and detections cannot reach 'pelvis' (inference still runs, so
+        # the symptom is "detections appear but have no TF").
+        #
+        # The real robot does NOT need this: its Livox driver is configured with
+        # frame_id=mid360_link, so clouds already arrive on a frame the URDF contains.
+        # Bags recorded before that change, and sim, still do.
         Node(
             package="tf2_ros",
             executable="static_transform_publisher",
@@ -163,6 +181,7 @@ def generate_launch_description():
             arguments=["--frame-id", "mid360_link", "--child-frame-id", "livox_frame"],
             parameters=[{"use_sim_time": False}],
             output="log",
+            condition=IfCondition(LaunchConfiguration("publish_tf")),
         ),
 
         # 2. 2-Pass Snapshot Pipeline Node (Collects 10 frames -> Freezes Dense Cloud -> CenterPoint 3D Detection)
