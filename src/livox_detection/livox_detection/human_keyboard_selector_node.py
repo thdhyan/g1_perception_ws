@@ -12,10 +12,14 @@ Keybindings:
     [1-9]       Lock onto human target #1..#9
     [0/C]       Clear target selection
     [R]         Rescan: collect a fresh cloud and re-run detection
-    [T]         Re-publish the frozen snapshot cloud, without re-detecting
+    [T]         Same as [R], via /g1/trigger_snapshot instead of /g1/rescan
     [V]         shake hand      [B]  high wave     [N]  clap
     [M]         high five       [,]  heart         [.]  hug
     [ESC/Ctrl+C] Quit
+
+Both scan keys halt the robot and wait `settle_time` before firing: a cloud
+accumulated while walking is smeared across several poses, and every box built
+from it is misplaced.
 
 Motion is hold-to-move: a key sets the velocity and the terminal's own auto-repeat
 keeps it alive, but the velocity decays to zero `key_hold_timeout` seconds after
@@ -72,6 +76,7 @@ class HumanKeyboardSelectorNode(Node):
         self.declare_parameter("yaw_rate", 0.50)
         self.declare_parameter("stream_hz", 10.0)
         self.declare_parameter("key_hold_timeout", 0.5)
+        self.declare_parameter("settle_time", 1.0)
 
         self.input_topic = str(self.get_parameter("input_topic").value)
         self.socket_path = str(self.get_parameter("socket_path").value)
@@ -80,6 +85,7 @@ class HumanKeyboardSelectorNode(Node):
         self.yaw_rate = float(self.get_parameter("yaw_rate").value)
         self.stream_hz = float(self.get_parameter("stream_hz").value)
         self.key_hold_timeout = float(self.get_parameter("key_hold_timeout").value)
+        self.settle_time = float(self.get_parameter("settle_time").value)
 
         self.lock = threading.Lock()
         self.current_humans: List[Detection3D] = []
@@ -113,7 +119,7 @@ class HumanKeyboardSelectorNode(Node):
         self.pub_arm_cmd = self.create_publisher(String, "/g1/arm/action_cmd", 10)
 
         self.cli_rescan = self.create_client(Trigger, "/g1/rescan")
-        self.cli_snapshot = self.create_client(Trigger, "/g1/publish_front_snapshot")
+        self.cli_snapshot = self.create_client(Trigger, "/g1/trigger_snapshot")
 
         self.create_timer(1.0 / max(self.stream_hz, 1.0), self.on_velocity_timer)
 
@@ -208,8 +214,33 @@ class HumanKeyboardSelectorNode(Node):
         self._clear_beacon()
         self.status = "selection cleared"
 
+    def _stop_and_settle(self) -> None:
+        """Halt and let the gait finish before any cloud collection.
+
+        The snapshot pipeline accumulates several sweeps into one dense cloud and
+        treats them as a single rigid observation. Collected while walking, the
+        sweeps are taken from different poses, so the cloud smears along the
+        direction of travel and every box built from it is wrong -- and the
+        greeting controller then walks to that wrong position. Stopping first is
+        cheaper than trying to deskew afterwards.
+
+        settle_time covers the SDK's own braking ramp: stop() streams zero
+        velocity and then StopMove(), but the feet are still planting when it
+        returns.
+        """
+        with self.lock:
+            moving = bool(self._vx or self._vy or self._wz)
+            self._vx = self._vy = self._wz = 0.0
+        self._bridge({"cmd": "stop"})
+        self._was_moving = False
+        if moving:
+            self.status = "stopping before scan..."
+            self.render()
+        time.sleep(self.settle_time)
+
     def trigger_rescan(self) -> None:
         """/g1/rescan -- collect a fresh cloud AND re-run detection on it."""
+        self._stop_and_settle()
         if self.cli_rescan.wait_for_service(timeout_sec=0.5):
             self.cli_rescan.call_async(Trigger.Request())
             self.status = "rescan requested (new cloud + detection)"
@@ -217,14 +248,19 @@ class HumanKeyboardSelectorNode(Node):
             self.status = "no /g1/rescan service (is the snapshot pipeline running?)"
 
     def trigger_snapshot(self) -> None:
-        """/g1/publish_front_snapshot -- re-publish the frozen cloud without
-        re-running detection. Separate from rescan because when a detection looks
-        wrong the useful question is whether the cloud or the model is at fault."""
+        """/g1/trigger_snapshot -- an alias, not a different operation.
+
+        The pipeline binds /g1/trigger_snapshot, /g1/retrigger_snapshot and
+        /g1/rescan to the same handler, so this collects a fresh cloud and
+        re-detects exactly like [R] does. Kept as a second key only because
+        whichever name a given pipeline build advertises, one of the two works.
+        """
+        self._stop_and_settle()
         if self.cli_snapshot.wait_for_service(timeout_sec=0.5):
             self.cli_snapshot.call_async(Trigger.Request())
-            self.status = "snapshot re-published"
+            self.status = "snapshot triggered"
         else:
-            self.status = "no /g1/publish_front_snapshot service"
+            self.status = "no /g1/trigger_snapshot service"
 
     # ----------------------------------------------------------------- arms
 
@@ -266,7 +302,7 @@ class HumanKeyboardSelectorNode(Node):
 
         print("\n  MOVE   [W/A/S/D] walk/strafe   [Q/E] turn   [SPACE] stop")
         print(f"         [Z/X] speed {self.linear_speed:4.2f} m/s   [-/+] yaw {self.yaw_rate:4.2f} rad/s")
-        print("  TARGET [1-9] select   [0/C] clear   [R] rescan   [T] re-publish snapshot")
+        print("  TARGET [1-9] select   [0/C] clear   [R] rescan   [T] snapshot (alias)")
         print("  ARMS   " + "   ".join(f"[{k.upper()}] {lbl.split(' ', 1)[1]}"
                                        for k, (_, lbl) in ARM_ACTION_KEYS.items()))
         print("  [ESC] quit")
