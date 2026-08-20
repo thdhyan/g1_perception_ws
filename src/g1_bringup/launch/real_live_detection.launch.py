@@ -150,12 +150,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "standoff_distance",
-            default_value="0.80",
+            default_value="1.50",
             description="Where to stop in front of the target human, in metres",
         ),
         DeclareLaunchArgument(
             "greeting_action",
-            default_value="shake_hand",
+            default_value="low_wave",
             description="Gesture on arrival; any bridge action name, or 'none'",
         ),
         DeclareLaunchArgument(

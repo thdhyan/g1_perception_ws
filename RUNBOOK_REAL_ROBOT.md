@@ -108,8 +108,6 @@ ros2 launch g1_bringup real_live_detection.launch.py \
   accumulate_frames:=3 \
   max_distance:=15.0 \
   max_hz:=10.0 \
-  standoff_distance:=0.80 \
-  greeting_action:=shake_hand \
   rviz:=true
 ```
 
@@ -179,7 +177,7 @@ ros2 run livox_detection human_keyboard_selector_node --ros-args \
 | `T` | same as `R`, via `/g1/trigger_snapshot` |
 | `Y` | **YES — confirm the approach** and walk to the selected human |
 | `H` | greet where the robot stands, without approaching |
-| `V` `B` `N` `M` `,` `.` | shake hand, high wave, clap, high five, heart, hug |
+| `V` `B` `N` `M` `,` `.` | shake hand, high wave, low wave, high five, heart, hands up |
 | `ESC` | quit (halts the robot on the way out) |
 
 Motion is hold-to-move: velocity decays to zero `key_hold_timeout` (0.5 s) after
@@ -216,9 +214,16 @@ ros2 launch g1_bringup real_human_follow.launch.py \
   auto_execute:=false
 ```
 
-`auto_execute:=false` keeps the robot still until a target is selected — start
-there. `greeting_action` accepts `shake_hand`, `low_wave`, `high_wave`,
-`wave_and_shake`, `none`, or any bridge action name.
+`auto_execute:=false` keeps the robot still until you press `Y` — start there.
+
+Approach behaviour is set on this launch, not in the console:
+`standoff_distance` (default **1.50 m**) is where the robot stops in front of the
+human, and `linear_speed` (default **0.30 m/s**) is the walk-up speed. Both are
+forwarded to `human_follow_and_greet_node`, whose own bare defaults (0.60 m,
+0.50 m/s) only apply if you run that node with `ros2 run`.
+
+`greeting_action` (default `low_wave`) accepts `shake_hand`, `low_wave`,
+`high_wave`, `wave_and_shake`, `none`, or any bridge action name.
 
 ## 6. Recording
 

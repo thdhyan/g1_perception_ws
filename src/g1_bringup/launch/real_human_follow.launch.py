@@ -120,12 +120,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "standoff_distance",
-            default_value="0.80",
-            description="Standoff distance in front of target human in meters (default 0.80m)",
+            default_value="1.50",
+            description="Where to stop in front of the target human, in metres",
         ),
         DeclareLaunchArgument(
             "greeting_action",
-            default_value="shake_hand",
+            default_value="low_wave",
             description=("Gesture on arrival: 'shake_hand', 'low_wave', 'high_wave', "
                          "'wave_and_shake', 'none', or any G1ArmActionClient action name "
                          "(clap, hug, heart, right_heart, high_five, hands_up, reject, "
@@ -133,8 +133,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "linear_speed",
-            default_value="0.20",
-            description="Approach walking speed in m/s (safe default 0.20 m/s)",
+            default_value="0.30",
+            description="Approach walking speed in m/s, used for the whole walk-up",
         ),
         DeclareLaunchArgument(
             "auto_execute",

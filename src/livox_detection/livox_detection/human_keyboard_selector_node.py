@@ -15,8 +15,8 @@ Keybindings:
     [T]         Same as [R], via /g1/trigger_snapshot instead of /g1/rescan
     [Y]         YES: confirm the approach the selection armed (the walk permission)
     [H]         Greet where the robot stands, without approaching
-    [V]         shake hand      [B]  high wave     [N]  clap
-    [M]         high five       [,]  heart         [.]  hug
+    [V]         shake hand      [B]  high wave     [N]  low wave
+    [M]         high five       [,]  heart         [.]  hands up
     [ESC/Ctrl+C] Quit
 
 Both scan keys halt the robot and wait `settle_time` before firing: a cloud
@@ -60,10 +60,14 @@ from visualization_msgs.msg import Marker, MarkerArray
 ARM_ACTION_KEYS = {
     "v": ("shake_hand", "🤝 Shake hand"),
     "b": ("high_wave", "👋 High wave"),
-    "n": ("clap", "👏 Clap"),
+    # "face wave" is the SDK's name for the low wave. Clap and hug used to sit on
+    # these two keys; both are wrong for greeting a person at a standoff distance
+    # -- a hug needs contact the robot is not approaching for, and a clap reads as
+    # applause rather than acknowledgement.
+    "n": ("face_wave", "🙋 Low wave"),
     "m": ("high_five", "🙌 High five"),
     ",": ("heart", "💗 Heart"),
-    ".": ("hug", "🫂 Hug"),
+    ".": ("hands_up", "🙌 Hands up"),
 }
 
 
