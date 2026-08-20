@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Real Robot LIVE 3D Human Detection — perception only unless follow:=true.
+"""Real Robot LIVE 3D Human Detection, with an operator-confirmed approach.
 
-By default this is the same laptop-side stack as real_human_follow.launch.py
-minus every actuation node: nothing talks to /tmp/g1_robot_bridge.sock and the
-G1 stays where it is.
+Live continuous detection (not the 2-pass snapshot pipeline) plus
+human_follow_and_greet_node, which walks to a standoff in front of the human
+published on /g1/selected_human.
 
-follow:=true adds human_follow_and_greet_node, which walks to a standoff in
-front of the human published on /g1/selected_human. Even then auto_execute
-defaults to false, so selecting a target only arms the approach and the operator
-confirms it with [Y] in the keyboard console.
+Nothing moves on its own. auto_execute defaults to false, so selecting a target
+only ARMS the approach; the node then waits on /g1/approach_selected, which is
+[Y] in the keyboard console. Pass follow:=false for a perception-only stack that
+cannot move the robot at all.
 
 Uses the continuous detector (livox_detection_node, sliding accumulation +
 inference every frame) rather than the 2-pass snapshot pipeline.
@@ -140,10 +140,13 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "follow",
-            default_value="false",
-            description=("Also run human_follow_and_greet_node, which walks to a standoff "
-                         "in front of whichever human is published on /g1/selected_human. "
-                         "Off by default -- without it this launch cannot move the robot"),
+            default_value="true",
+            description=("Run human_follow_and_greet_node, which walks to a standoff in "
+                         "front of whichever human is published on /g1/selected_human and "
+                         "owns the /g1/approach_selected service that [Y] calls. Safe to "
+                         "leave on because auto_execute defaults to false: the node arms "
+                         "the approach and waits. follow:=false makes this launch "
+                         "perception-only, unable to move the robot at all"),
         ),
         DeclareLaunchArgument(
             "standoff_distance",

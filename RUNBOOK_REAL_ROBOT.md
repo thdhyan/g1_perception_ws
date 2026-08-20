@@ -90,7 +90,7 @@ print(s.recv(4096).decode())"
 If a velocity command comes back `{"ok": false, "error": "unknown cmd:
 set_velocity"}`, the running bridge predates that command — restart it.
 
-## 3. Live 3D detection
+## 3. Live 3D detection + approach
 
 ```bash
 ros2 launch g1_bringup real_live_detection.launch.py \
@@ -101,20 +101,21 @@ ros2 launch g1_bringup real_live_detection.launch.py \
   accumulate_frames:=3 \
   max_distance:=15.0 \
   max_hz:=10.0 \
+  standoff_distance:=0.80 \
+  greeting_action:=shake_hand \
   rviz:=true
 ```
 
-Perception only by default — no node in this launch commands the robot.
+This runs `human_follow_and_greet_node` alongside the detector (`follow:=true` is
+the default), which is what provides `/g1/approach_selected` — the service the
+console's `Y` key calls. Without it the console reports
+`no /g1/approach_selected (is human_follow_and_greet_node running?)`.
 
-Add `follow:=true` to also run `human_follow_and_greet_node`, which walks to a
-standoff in front of the human on `/g1/selected_human`. `auto_execute` still
-defaults to false, so the walk waits for `Y`:
+**The robot still does not move on its own.** `auto_execute` defaults to false,
+so selecting a human only ARMS the approach and the node waits for `Y`.
 
-```bash
-ros2 launch g1_bringup real_live_detection.launch.py \
-  algorithm:=voxelnext score_threshold:=0.2 offset_ground:=-0.3 \
-  follow:=true standoff_distance:=0.80 greeting_action:=shake_hand
-```
+`follow:=false` drops the approach node entirely, leaving a perception-only stack
+that cannot move the robot.
 
 `offset_ground` is **not** the sensor height: it is whatever puts the ground
 where the nuScenes-trained model expects it. Measured on the real robot, with
