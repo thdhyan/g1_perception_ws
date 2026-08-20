@@ -292,9 +292,30 @@ def make_handler(robot: G1Robot):
                     resp = dispatch(robot, req)
                 except Exception as e:
                     resp = {"ok": False, "error": str(e)}
-                self.wfile.write((json.dumps(resp) + "\n").encode())
+                try:
+                    self.wfile.write((json.dumps(resp) + "\n").encode())
+                except (BrokenPipeError, ConnectionResetError):
+                    # The client gave up waiting and closed the socket -- normal
+                    # when a gesture outruns a caller's timeout. The command still
+                    # ran; only the reply had nowhere to go. Without this the
+                    # exception propagates out of handle() and prints a traceback
+                    # per gesture.
+                    return
 
     return Handler
+
+
+class ThreadedUnixStreamServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+    """One thread per connection.
+
+    The plain UnixStreamServer serves one client at a time, so a gesture that
+    holds for 3.5s blocked every other command for that whole time -- a teleop
+    client opening a connection per tick piled up a backlog that then executed
+    against a stale world once the gesture finished. SDK calls are still
+    serialised, by robot._lock inside dispatch().
+    """
+
+    daemon_threads = True
 
 
 def dispatch(robot: G1Robot, req: dict) -> dict:
@@ -363,7 +384,7 @@ def main():
     if os.path.exists(socket_path):
         os.remove(socket_path)
 
-    server = socketserver.UnixStreamServer(socket_path, make_handler(robot))
+    server = ThreadedUnixStreamServer(socket_path, make_handler(robot))
     print(f"Listening on {socket_path}")
     try:
         server.serve_forever()

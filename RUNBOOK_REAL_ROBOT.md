@@ -90,6 +90,13 @@ print(s.recv(4096).decode())"
 If a velocity command comes back `{"ok": false, "error": "unknown cmd:
 set_velocity"}`, the running bridge predates that command — restart it.
 
+The bridge serves one thread per connection. An older single-threaded build
+blocks every command for the full duration of a gesture, then executes the
+backlog of queued velocity commands against a stale world — which looks like
+"the robot stops responding after an arm action". If you see
+`BrokenPipeError: [Errno 32] Broken pipe` in the bridge, it is that build:
+restart it.
+
 ## 3. Live 3D detection + approach
 
 ```bash

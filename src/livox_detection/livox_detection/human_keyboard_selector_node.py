@@ -101,6 +101,9 @@ class HumanKeyboardSelectorNode(Node):
         self._wz = 0.0
         self._last_move_key = 0.0
         self._was_moving = False
+        # Set while a gesture is running, to keep the velocity timer from
+        # interleaving walk commands with an arm action on the same robot.
+        self._gesture_busy = False
 
         # Latched QoS matching sorted humans publisher
         latched_qos = QoSProfile(
@@ -166,6 +169,9 @@ class HumanKeyboardSelectorNode(Node):
                 self._vx = self._vy = self._wz = 0.0
                 self.status = "idle (key released)"
             vx, vy, wz = self._vx, self._vy, self._wz
+
+        if self._gesture_busy:
+            return
 
         moving = bool(vx or vy or wz)
         if moving:
@@ -290,16 +296,29 @@ class HumanKeyboardSelectorNode(Node):
     # ----------------------------------------------------------------- arms
 
     def trigger_arm_action(self, action: str, label: str) -> None:
-        self.status = f"{label}..."
-        self.pub_arm_cmd.publish(String(data=action))
-        resp = self._bridge({"cmd": "arm_action", "action": action}, timeout=5.0)
-        if resp is not None and not resp.get("ok", False):
-            self.status = f"{label} rejected: {resp.get('error')}"
-            return
-        # arm_action has no auto-release, unlike the bridge's shake_hand/wave.
-        time.sleep(3.0)
-        self._bridge({"cmd": "release_arm"}, timeout=5.0)
-        self.status = f"{label} done, arm released"
+        """Run one gesture, with the robot held still for its duration.
+
+        The timeouts are generous on purpose: a gesture blocks in the bridge
+        until the arm finishes, and a client that gives up early closes the
+        socket mid-reply, which used to surface as a BrokenPipeError traceback
+        on the bridge side while the action itself still ran.
+        """
+        self.halt()
+        self._gesture_busy = True
+        try:
+            self.status = f"{label}..."
+            self.render()
+            self.pub_arm_cmd.publish(String(data=action))
+            resp = self._bridge({"cmd": "arm_action", "action": action}, timeout=20.0)
+            if resp is not None and not resp.get("ok", False):
+                self.status = f"{label} rejected: {resp.get('error')}"
+                return
+            # arm_action has no auto-release, unlike the bridge's shake_hand/wave.
+            time.sleep(3.0)
+            self._bridge({"cmd": "release_arm"}, timeout=20.0)
+            self.status = f"{label} done, arm released"
+        finally:
+            self._gesture_busy = False
 
     # ----------------------------------------------------------------- view
 
