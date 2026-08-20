@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Real Robot LIVE 3D Human Detection — perception only, robot does NOT move.
+"""Real Robot LIVE 3D Human Detection — perception only unless follow:=true.
 
-Same laptop-side stack as real_human_follow.launch.py minus every actuation
-node: no human_follow_and_greet_node, no loco approach, nothing talks to
-/tmp/g1_robot_bridge.sock. The G1 stays where it is.
+By default this is the same laptop-side stack as real_human_follow.launch.py
+minus every actuation node: nothing talks to /tmp/g1_robot_bridge.sock and the
+G1 stays where it is.
+
+follow:=true adds human_follow_and_greet_node, which walks to a standoff in
+front of the human published on /g1/selected_human. Even then auto_execute
+defaults to false, so selecting a target only arms the approach and the operator
+confirms it with [Y] in the keyboard console.
 
 Uses the continuous detector (livox_detection_node, sliding accumulation +
 inference every frame) rather than the 2-pass snapshot pipeline.
@@ -133,6 +138,41 @@ def generate_launch_description():
             default_value="true",
             description="Whether to launch RViz",
         ),
+        DeclareLaunchArgument(
+            "follow",
+            default_value="false",
+            description=("Also run human_follow_and_greet_node, which walks to a standoff "
+                         "in front of whichever human is published on /g1/selected_human. "
+                         "Off by default -- without it this launch cannot move the robot"),
+        ),
+        DeclareLaunchArgument(
+            "standoff_distance",
+            default_value="0.80",
+            description="Where to stop in front of the target human, in metres",
+        ),
+        DeclareLaunchArgument(
+            "greeting_action",
+            default_value="shake_hand",
+            description="Gesture on arrival; any bridge action name, or 'none'",
+        ),
+        DeclareLaunchArgument(
+            "linear_speed",
+            default_value="0.30",
+            description="Approach walking speed (m/s)",
+        ),
+        DeclareLaunchArgument(
+            "auto_execute",
+            default_value="false",
+            description=("Walk as soon as a human is selected. False means selecting only "
+                         "ARMS the approach and the operator confirms it with [Y] in the "
+                         "keyboard console (/g1/approach_selected) -- keep it false while "
+                         "detections still jump between frames"),
+        ),
+        DeclareLaunchArgument(
+            "auto_greet",
+            default_value="true",
+            description="Whether to greet automatically once the standoff is reached",
+        ),
 
         # ── 1. NO TF published from the laptop ────────────────────────────────
         # TF comes entirely from the robot: lowstate_to_jointstate_node turns the
@@ -176,6 +216,26 @@ def generate_launch_description():
                 "max_distance": LaunchConfiguration("max_distance"),
                 "offset_ground": LaunchConfiguration("offset_ground"),
                 "device": "cuda",
+            }],
+        ),
+
+        # ── 2b. Optional: walk to the selected human ─────────────────────────
+        # Consumes /g1/selected_human (PoseStamped in pelvis), computes a standoff
+        # goal along the robot->human vector, and drives there through
+        # robot_bridge's socket. With auto_execute false it only arms the plan and
+        # waits for /g1/approach_selected, which is [Y] in the keyboard console.
+        Node(
+            package="g1_arm_control",
+            executable="human_follow_and_greet_node",
+            name="human_follow_and_greet_node",
+            output="screen",
+            condition=IfCondition(LaunchConfiguration("follow")),
+            parameters=[{
+                "standoff_distance": LaunchConfiguration("standoff_distance"),
+                "greeting_action": LaunchConfiguration("greeting_action"),
+                "linear_speed": LaunchConfiguration("linear_speed"),
+                "auto_execute": LaunchConfiguration("auto_execute"),
+                "auto_greet": LaunchConfiguration("auto_greet"),
             }],
         ),
 

@@ -73,6 +73,11 @@ class HumanFollowAndGreetNode(Node):
         self.srv_trigger_greet = self.create_service(
             Trigger, "/g1/trigger_greeting", self.handle_trigger_greeting
         )
+        # Operator confirmation for the walk itself, used when auto_execute is false.
+        self.srv_approach = self.create_service(
+            Trigger, "/g1/approach_selected", self.handle_approach_selected
+        )
+        self._pending_approach = None
 
         self._set_state("IDLE")
         self.get_logger().info(
@@ -131,15 +136,28 @@ class HumanFollowAndGreetNode(Node):
                 return
             self.is_busy = True
 
-        if self.auto_execute and (travel_dist > self.min_thresh or abs(target_yaw_deg) > 3.0):
+        worth_moving = travel_dist > self.min_thresh or abs(target_yaw_deg) > 3.0
+        pipeline_args = (goal_x, goal_y, target_yaw_deg, travel_dist, msg.header, pos, (goal_x, goal_y))
+
+        if self.auto_execute and worth_moving:
             threading.Thread(
                 target=self._run_follow_and_greet_pipeline,
-                args=(goal_x, goal_y, target_yaw_deg, travel_dist, msg.header, pos, (goal_x, goal_y)),
+                args=pipeline_args,
                 daemon=True,
             ).start()
         else:
             with self.lock:
+                # Hold the plan instead of discarding it. With auto_execute false the
+                # operator confirms each approach through /g1/approach_selected, so a
+                # detection that jumped between frames cannot walk the robot on its
+                # own -- selecting a target only arms it.
+                self._pending_approach = pipeline_args if worth_moving else None
                 self.is_busy = False
+            if worth_moving:
+                self.get_logger().info(
+                    "Approach ARMED, not started (auto_execute is false). "
+                    "Confirm with: ros2 service call /g1/approach_selected std_srvs/srv/Trigger"
+                )
 
     def _run_follow_and_greet_pipeline(
         self, dx: float, dy: float, dyaw_deg: float, travel_dist: float,
@@ -281,6 +299,27 @@ class HumanFollowAndGreetNode(Node):
         self.get_logger().info("✅ [✓] Post-walkup interaction finished. Arm released to neutral.")
         self._publish_greeting_markers(header, goal_pos, "✅ Interaction Complete (60cm Standoff)", (0.3, 1.0, 0.3))
         self._set_state("COMPLETED")
+
+    def handle_approach_selected(self, request, response):
+        """Start the approach the last selection armed. This is the walk permission:
+        with auto_execute false nothing moves until this is called."""
+        with self.lock:
+            if self.is_busy:
+                response.success = False
+                response.message = "A follow & greet sequence is already running."
+                return response
+            pending = self._pending_approach
+            if pending is None:
+                response.success = False
+                response.message = "No approach armed -- select a human first."
+                return response
+            self._pending_approach = None
+            self.is_busy = True
+
+        threading.Thread(target=self._run_follow_and_greet_pipeline, args=pending, daemon=True).start()
+        response.success = True
+        response.message = f"Approach confirmed: travelling {pending[3]:.2f}m."
+        return response
 
     def handle_trigger_greeting(self, request, response):
         """Service handler to manually trigger greeting."""

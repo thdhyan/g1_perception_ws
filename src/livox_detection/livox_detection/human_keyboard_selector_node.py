@@ -13,6 +13,8 @@ Keybindings:
     [0/C]       Clear target selection
     [R]         Rescan: collect a fresh cloud and re-run detection
     [T]         Same as [R], via /g1/trigger_snapshot instead of /g1/rescan
+    [Y]         YES: confirm the approach the selection armed (the walk permission)
+    [H]         Greet where the robot stands, without approaching
     [V]         shake hand      [B]  high wave     [N]  clap
     [M]         high five       [,]  heart         [.]  hug
     [ESC/Ctrl+C] Quit
@@ -120,6 +122,8 @@ class HumanKeyboardSelectorNode(Node):
 
         self.cli_rescan = self.create_client(Trigger, "/g1/rescan")
         self.cli_snapshot = self.create_client(Trigger, "/g1/trigger_snapshot")
+        self.cli_approach = self.create_client(Trigger, "/g1/approach_selected")
+        self.cli_greet = self.create_client(Trigger, "/g1/trigger_greeting")
 
         self.create_timer(1.0 / max(self.stream_hz, 1.0), self.on_velocity_timer)
 
@@ -262,6 +266,27 @@ class HumanKeyboardSelectorNode(Node):
         else:
             self.status = "no /g1/trigger_snapshot service"
 
+    def confirm_approach(self) -> None:
+        """The walk permission. Selecting a human only arms an approach; nothing
+        moves until this fires, so a detection that jumped between frames cannot
+        send the robot walking on its own."""
+        if not self.cli_approach.wait_for_service(timeout_sec=0.5):
+            self.status = "no /g1/approach_selected (is human_follow_and_greet_node running?)"
+            return
+        future = self.cli_approach.call_async(Trigger.Request())
+        future.add_done_callback(
+            lambda f: setattr(self, "status", f.result().message if f.result() else "approach call failed")
+        )
+        self.status = "approach confirmed, walking..."
+
+    def greet_in_place(self) -> None:
+        """Run the configured greeting without approaching."""
+        if not self.cli_greet.wait_for_service(timeout_sec=0.5):
+            self.status = "no /g1/trigger_greeting service"
+            return
+        self.cli_greet.call_async(Trigger.Request())
+        self.status = "greeting in place..."
+
     # ----------------------------------------------------------------- arms
 
     def trigger_arm_action(self, action: str, label: str) -> None:
@@ -303,6 +328,7 @@ class HumanKeyboardSelectorNode(Node):
         print("\n  MOVE   [W/A/S/D] walk/strafe   [Q/E] turn   [SPACE] stop")
         print(f"         [Z/X] speed {self.linear_speed:4.2f} m/s   [-/+] yaw {self.yaw_rate:4.2f} rad/s")
         print("  TARGET [1-9] select   [0/C] clear   [R] rescan   [T] snapshot (alias)")
+        print("  APPROACH [Y] YES-walk to target   [H] greet in place")
         print("  ARMS   " + "   ".join(f"[{k.upper()}] {lbl.split(' ', 1)[1]}"
                                        for k, (_, lbl) in ARM_ACTION_KEYS.items()))
         print("  [ESC] quit")
@@ -403,6 +429,10 @@ def main(args=None):
                     node.trigger_rescan()
                 elif lower == "t":
                     node.trigger_snapshot()
+                elif lower == "y":
+                    node.confirm_approach()
+                elif lower == "h":
+                    node.greet_in_place()
 
                 elif lower in ARM_ACTION_KEYS:
                     action, label = ARM_ACTION_KEYS[lower]

@@ -104,7 +104,17 @@ ros2 launch g1_bringup real_live_detection.launch.py \
   rviz:=true
 ```
 
-Perception only — no node in this launch commands the robot.
+Perception only by default — no node in this launch commands the robot.
+
+Add `follow:=true` to also run `human_follow_and_greet_node`, which walks to a
+standoff in front of the human on `/g1/selected_human`. `auto_execute` still
+defaults to false, so the walk waits for `Y`:
+
+```bash
+ros2 launch g1_bringup real_live_detection.launch.py \
+  algorithm:=voxelnext score_threshold:=0.2 offset_ground:=-0.3 \
+  follow:=true standoff_distance:=0.80 greeting_action:=shake_hand
+```
 
 `offset_ground` is **not** the sensor height: it is whatever puts the ground
 where the nuScenes-trained model expects it. Measured on the real robot, with
@@ -157,13 +167,21 @@ ros2 run livox_detection human_keyboard_selector_node --ros-args \
 | `-` `+` | yaw rate −/+ 0.10 rad/s |
 | `1`–`9` | lock onto human #1..#9 |
 | `0` / `C` | clear selection |
-| `R` | rescan: fresh cloud + re-run detection |
-| `T` | re-publish the frozen snapshot cloud, no re-detection |
+| `R` | rescan: fresh cloud + re-run detection (halts the robot first) |
+| `T` | same as `R`, via `/g1/trigger_snapshot` |
+| `Y` | **YES — confirm the approach** and walk to the selected human |
+| `H` | greet where the robot stands, without approaching |
 | `V` `B` `N` `M` `,` `.` | shake hand, high wave, clap, high five, heart, hug |
 | `ESC` | quit (halts the robot on the way out) |
 
 Motion is hold-to-move: velocity decays to zero `key_hold_timeout` (0.5 s) after
 the last keypress, so letting go stops the robot rather than leaving it walking.
+
+**Walking to a detection needs two keys.** With `auto_execute:=false`, selecting
+`1`-`9` only ARMS an approach; the robot moves when you press `Y`
+(`/g1/approach_selected`). A detection that jumps between frames therefore cannot
+send the robot walking on its own. Both scan keys also halt the robot and wait
+`settle_time` before collecting, so no cloud is ever accumulated while walking.
 
 The console talks to `robot_bridge`'s socket directly — `cmd_vel_bridge` is only
 needed when something else (Nav2, a follow node) drives via `/cmd_vel`:
