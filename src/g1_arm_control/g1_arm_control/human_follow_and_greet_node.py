@@ -77,7 +77,12 @@ class HumanFollowAndGreetNode(Node):
         self.srv_approach = self.create_service(
             Trigger, "/g1/approach_selected", self.handle_approach_selected
         )
+        # Emergency cancel, called by [SPACE] in the keyboard console.
+        self.srv_abort = self.create_service(
+            Trigger, "/g1/abort_approach", self.handle_abort_approach
+        )
         self._pending_approach = None
+        self._abort = threading.Event()
 
         self._set_state("IDLE")
         self.get_logger().info(
@@ -183,7 +188,7 @@ class HumanFollowAndGreetNode(Node):
 
                 # 2. Sequential Execution:
                 # Step 1: Rotate in place to face target directly FIRST
-                if abs(dyaw_deg) > 3.0:
+                if abs(dyaw_deg) > 3.0 and not self._abort.is_set():
                     self.get_logger().info(f"  -> 🔄 Rotating {dyaw_deg:+.1f}° to face human...")
                     self._send_socket_command({
                         "cmd": "rotate", "degrees": dyaw_deg, "yaw_rate": self.yaw_rate
@@ -191,7 +196,7 @@ class HumanFollowAndGreetNode(Node):
                     time.sleep(0.8)
 
                 # Step 2: Walk straight forward (+X only)
-                if travel_dist > self.min_thresh:
+                if travel_dist > self.min_thresh and not self._abort.is_set():
                     self.get_logger().info(f"  -> 🚶 Walking straight forward {travel_dist:.2f}m at {self.linear_speed:.2f}m/s...")
                     self._send_socket_command({
                         "cmd": "move", "dx": travel_dist, "dy": 0.0, "speed": self.linear_speed
@@ -200,6 +205,9 @@ class HumanFollowAndGreetNode(Node):
 
                 # Step 3: Hard Stop
                 self._send_socket_command({"cmd": "stop"})
+                if self._abort.is_set():
+                    self.get_logger().warning("Approach aborted; skipping arrival and greeting.")
+                    return
                 self.get_logger().info("  -> [✓] Locomotion walk-up complete and fully halted.")
             else:
                 self.get_logger().info("Robot is already within standoff distance.")
@@ -300,6 +308,24 @@ class HumanFollowAndGreetNode(Node):
         self._publish_greeting_markers(header, goal_pos, "✅ Interaction Complete (60cm Standoff)", (0.3, 1.0, 0.3))
         self._set_state("COMPLETED")
 
+    def handle_abort_approach(self, request, response):
+        """Cancel an approach in progress and disarm any pending one.
+
+        The walk itself is a blocking move/rotate inside the bridge; the bridge's
+        own stop cuts that short. This flag stops the phases after it -- without
+        it the robot would halt mid-walk and then carry on into the arrival and
+        greeting sequence as if it had arrived.
+        """
+        self._abort.set()
+        with self.lock:
+            self._pending_approach = None
+        self._send_socket_command({"cmd": "stop"})
+        self._set_state("ABORTED")
+        self.get_logger().warning("Approach ABORTED by operator.")
+        response.success = True
+        response.message = "Approach aborted and selection disarmed."
+        return response
+
     def handle_approach_selected(self, request, response):
         """Start the approach the last selection armed. This is the walk permission:
         with auto_execute false nothing moves until this is called."""
@@ -316,6 +342,7 @@ class HumanFollowAndGreetNode(Node):
             self._pending_approach = None
             self.is_busy = True
 
+        self._abort.clear()
         threading.Thread(target=self._run_follow_and_greet_pipeline, args=pending, daemon=True).start()
         response.success = True
         response.message = f"Approach confirmed: travelling {pending[3]:.2f}m."

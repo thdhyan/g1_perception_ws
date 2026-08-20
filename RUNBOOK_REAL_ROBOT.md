@@ -168,7 +168,7 @@ ros2 run livox_detection human_keyboard_selector_node --ros-args \
 |---|---|
 | `W` `A` `S` `D` | walk forward / strafe left / back / strafe right |
 | `Q` `E` | turn left / right |
-| `SPACE` | stop |
+| `SPACE` | **EMERGENCY STOP** — overrides everything in flight (see below) |
 | `Z` `X` | linear speed −/+ 0.05 m/s |
 | `-` `+` | yaw rate −/+ 0.10 rad/s |
 | `1`–`9` | lock onto human #1..#9 |
@@ -182,6 +182,22 @@ ros2 run livox_detection human_keyboard_selector_node --ros-args \
 
 Motion is hold-to-move: velocity decays to zero `key_hold_timeout` (0.5 s) after
 the last keypress, so letting go stops the robot rather than leaving it walking.
+
+**`SPACE` preempts everything**, whatever is running:
+
+- zeroes the teleop velocity;
+- sends the bridge's `stop`, which **bypasses the bridge's dispatch lock** and
+  raises an abort flag that a blocking `move`/`rotate` polls — without that, a
+  stop would queue behind the very walk it is meant to interrupt and only arrive
+  after the robot had covered the full distance;
+- calls `/g1/abort_approach`, which cancels an approach in progress and disarms
+  any pending one, so the robot does not halt mid-walk and then carry on into the
+  arrival and greeting as if it had arrived;
+- cuts a gesture's hold short. Gestures run on their own thread for exactly this
+  reason: the key loop stays free to read `SPACE` while an arm action is holding.
+
+The bridge call itself runs on a separate thread, so a slow or dead socket cannot
+delay the stop.
 
 **Walking to a detection needs two keys.** With `auto_execute:=false`, selecting
 `1`-`9` only ARMS an approach; the robot moves when you press `Y`

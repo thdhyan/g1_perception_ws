@@ -108,6 +108,9 @@ class HumanKeyboardSelectorNode(Node):
         # Set while a gesture is running, to keep the velocity timer from
         # interleaving walk commands with an arm action on the same robot.
         self._gesture_busy = False
+        # Raised by [SPACE] to cut a gesture short. Gestures run on their own
+        # thread precisely so the key loop stays free to raise this.
+        self._abort = threading.Event()
 
         # Latched QoS matching sorted humans publisher
         latched_qos = QoSProfile(
@@ -130,6 +133,7 @@ class HumanKeyboardSelectorNode(Node):
         self.cli_rescan = self.create_client(Trigger, "/g1/rescan")
         self.cli_snapshot = self.create_client(Trigger, "/g1/trigger_snapshot")
         self.cli_approach = self.create_client(Trigger, "/g1/approach_selected")
+        self.cli_abort = self.create_client(Trigger, "/g1/abort_approach")
         self.cli_greet = self.create_client(Trigger, "/g1/trigger_greeting")
 
         self.create_timer(1.0 / max(self.stream_hz, 1.0), self.on_velocity_timer)
@@ -159,11 +163,23 @@ class HumanKeyboardSelectorNode(Node):
             self.status = label
 
     def halt(self) -> None:
+        """[SPACE] -- the emergency stop, and the one path that overrides everything.
+
+        It must work while a gesture is sleeping and while the follow node is
+        walking, so it: raises the abort flag any gesture thread polls, zeroes the
+        teleop velocity, tells the bridge to stop (which bypasses the bridge's own
+        dispatch lock and cuts short a blocking move/rotate), and cancels an
+        in-flight approach. The bridge call runs on its own thread so a slow or
+        dead socket can never delay the rest.
+        """
+        self._abort.set()
         with self.lock:
             self._vx = self._vy = self._wz = 0.0
-            self.status = "stopped"
-        self._bridge({"cmd": "stop"})
+            self.status = "STOP"
         self._was_moving = False
+        threading.Thread(target=self._bridge, args=({"cmd": "stop"},), daemon=True).start()
+        if self.cli_abort.service_is_ready():
+            self.cli_abort.call_async(Trigger.Request())
 
     def on_velocity_timer(self) -> None:
         """Stream the current velocity, decaying to zero once the key is released."""
@@ -307,7 +323,16 @@ class HumanKeyboardSelectorNode(Node):
         socket mid-reply, which used to surface as a BrokenPipeError traceback
         on the bridge side while the action itself still ran.
         """
+        if self._gesture_busy:
+            self.status = "a gesture is already running"
+            return
+        # Stop walking before gesturing, then run the gesture off the key loop so
+        # [SPACE] stays live for its whole duration.
         self.halt()
+        threading.Thread(target=self._run_gesture, args=(action, label), daemon=True).start()
+
+    def _run_gesture(self, action: str, label: str) -> None:
+        self._abort.clear()
         self._gesture_busy = True
         try:
             self.status = f"{label}..."
@@ -318,9 +343,13 @@ class HumanKeyboardSelectorNode(Node):
                 self.status = f"{label} rejected: {resp.get('error')}"
                 return
             # arm_action has no auto-release, unlike the bridge's shake_hand/wave.
-            time.sleep(3.0)
-            self._bridge({"cmd": "release_arm"}, timeout=20.0)
-            self.status = f"{label} done, arm released"
+            # Sleep in slices so [SPACE] cuts the hold short instead of waiting it out.
+            if not self._abort.wait(timeout=3.0):
+                self._bridge({"cmd": "release_arm"}, timeout=20.0)
+                self.status = f"{label} done, arm released"
+            else:
+                self._bridge({"cmd": "release_arm"}, timeout=20.0)
+                self.status = f"{label} aborted, arm released"
         finally:
             self._gesture_busy = False
 

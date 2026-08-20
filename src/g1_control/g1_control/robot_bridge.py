@@ -87,6 +87,12 @@ class G1Robot:
         # Tracks whether set_velocity() has already put the robot in walk mode, so
         # a streaming caller does not re-poll the FSM on every command.
         self._walking = False
+        # Set by stop() to cut short an in-flight move()/rotate(). Those stream
+        # velocity for the whole traversal, so without a flag they can only be
+        # interrupted by killing the bridge -- which is not an emergency stop.
+        # Checked from a different thread than the one running the traversal,
+        # which is why the server is threaded.
+        self._abort = threading.Event()
 
     def get_fsm(self) -> int:
         code, fsm_id = self.client.GetFsmId()
@@ -159,8 +165,12 @@ class G1Robot:
         print(f"[G1Robot] Walking dx={dx:+.2f}m, dy={dy:+.2f}m (dist={distance:.2f}m) at {v_speed:.2f}m/s for duration={duration:.2f}s...")
 
         # 20 Hz continuous velocity streaming
+        self._abort.clear()
         start_time = time.time()
         while time.time() - start_time < duration:
+            if self._abort.is_set():
+                print("[G1Robot] Walk aborted by stop request.")
+                break
             self.client.SetVelocity(vx, vy, 0.0, duration=0.2)
             time.sleep(0.05)
 
@@ -185,8 +195,12 @@ class G1Robot:
         print(f"[G1Robot] Rotating {degrees:+.1f}° at {rate:.2f}rad/s for duration={duration:.2f}s...")
 
         # 20 Hz streaming
+        self._abort.clear()
         start_time = time.time()
         while time.time() - start_time < duration:
+            if self._abort.is_set():
+                print("[G1Robot] Rotation aborted by stop request.")
+                break
             self.client.SetVelocity(0.0, 0.0, rate, duration=0.2)
             time.sleep(0.05)
 
@@ -204,6 +218,10 @@ class G1Robot:
         self.client.Damp()
 
     def stop(self):
+        # Signal first, brake second: a move()/rotate() already streaming velocity
+        # on another thread must see the abort before this braking stream ends, or
+        # it resumes its own commands straight afterwards.
+        self._abort.set()
         # Stream 0 velocity to brake
         for _ in range(5):
             self.client.SetVelocity(0.0, 0.0, 0.0, duration=0.2)
@@ -319,8 +337,20 @@ class ThreadedUnixStreamServer(socketserver.ThreadingMixIn, socketserver.UnixStr
 
 
 def dispatch(robot: G1Robot, req: dict) -> dict:
+    cmd = req.get("cmd")
+
+    # STOP BYPASSES THE LOCK, DELIBERATELY.
+    # Every other command runs under robot._lock, and a blocking move()/rotate()
+    # holds it for the entire traversal -- so a stop that waited for the lock
+    # would queue behind the exact motion it is meant to interrupt and only
+    # arrive after the robot had already walked the full distance. That is not an
+    # emergency stop. Here it sets the abort flag the traversal loops poll and
+    # streams zero velocity immediately.
+    if cmd == "stop":
+        robot.stop()
+        return {"ok": True}
+
     with robot._lock:
-        cmd = req.get("cmd")
         if cmd == "get_fsm":
             return {"ok": True, "fsm_id": robot.get_fsm()}
         elif cmd == "ensure_walk_mode":
@@ -340,9 +370,6 @@ def dispatch(robot: G1Robot, req: dict) -> dict:
             return {"ok": True}
         elif cmd == "damp":
             robot.damp()
-            return {"ok": True}
-        elif cmd == "stop":
-            robot.stop()
             return {"ok": True}
         elif cmd == "shake_hand":
             robot.shake_hand(
