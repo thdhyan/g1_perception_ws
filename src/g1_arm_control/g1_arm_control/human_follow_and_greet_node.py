@@ -31,7 +31,11 @@ class HumanFollowAndGreetNode(Node):
 
         # Parameters
         self.declare_parameter("standoff_distance", 0.60)     # meters (60 cm)
-        self.declare_parameter("greeting_action", "shake_hand") # "shake_hand", "low_wave", "high_wave", "wave_and_shake"
+        # "shake_hand", "low_wave", "high_wave", "wave_and_shake", "none", or any
+        # G1ArmActionClient action name (clap, hug, heart, high_five, hands_up,
+        # reject, right_hand_up, x-ray, two-hand_kiss, left_kiss, right_kiss,
+        # right_heart) -- those are passed through to the bridge's arm_action.
+        self.declare_parameter("greeting_action", "shake_hand")
         self.declare_parameter("auto_execute", True)
         self.declare_parameter("auto_greet", True)
         self.declare_parameter("linear_speed", 0.50)          # m/s (G1 continuous walking pace)
@@ -247,6 +251,31 @@ class HumanFollowAndGreetNode(Node):
             self._publish_greeting_markers(header, goal_pos, "🤝 Offering Handshake...", (0.2, 0.9, 0.2))
             self._send_socket_command({"cmd": "shake_hand", "hold_seconds": 3.0, "auto_release": True})
             time.sleep(3.5)
+
+        elif action not in ("none", ""):
+            # Anything else is passed straight through to the SDK's action_map
+            # via robot_bridge, which normalises "right_hand_up" -> "right hand
+            # up" before looking it up. That covers every G1ArmActionClient
+            # gesture without needing a branch here: clap, hug, heart,
+            # right_heart, high_five, hands_up, reject, right_hand_up, x-ray,
+            # two-hand_kiss, left_kiss, right_kiss. Unlike the cases above,
+            # arm_action has no auto_release, so release explicitly.
+            self.get_logger().info(f"🦾 [GREETING] Performing arm action '{action}'...")
+            self._publish_greeting_markers(
+                header, goal_pos, f"🦾 {action.replace('_', ' ').title()}...", (0.8, 0.5, 1.0)
+            )
+
+            arm_msg = String()
+            arm_msg.data = action
+            self.pub_arm_cmd.publish(arm_msg)
+            resp = self._send_socket_command({"cmd": "arm_action", "action": action})
+            if resp is not None and not resp.get("ok", False):
+                self.get_logger().warn(
+                    f"Arm action '{action}' rejected by bridge: {resp.get('error')}. "
+                    "Run {\"cmd\":\"get_arm_actions\"} against the bridge socket for the valid list."
+                )
+            time.sleep(3.5)
+            self._send_socket_command({"cmd": "release_arm"})
 
         # Release & Completed
         self.get_logger().info("✅ [✓] Post-walkup interaction finished. Arm released to neutral.")

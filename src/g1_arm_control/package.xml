@@ -3,7 +3,7 @@
 <package format="3">
   <name>g1_arm_control</name>
   <version>0.1.0</version>
-  <description>G1 Arm Action Control and Human Interaction (Handshake, Low Wave, High Wave, Follow & Greet)</description>
+  <description>G1 Arm Action Control and Human Interaction (Handshake, Low Wave, High Wave, Follow &amp; Greet)</description>
   <maintainer email="th.dhyan.us@gmail.com">thakk100</maintainer>
   <license>MIT</license>
 

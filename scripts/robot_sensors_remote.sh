@@ -7,7 +7,9 @@
 #   ./scripts/robot_sensors_remote.sh status   # Checks if sensors and ROS2 topics are active
 #   ./scripts/robot_sensors_remote.sh logs     # Tails logs of remote sensor node
 
-ROBOT_HOST="unitree@ubuntu.local"
+# mDNS (ubuntu.local) does not resolve on the laptop -- use the wired IP.
+# Override with:  ROBOT_HOST=unitree@other-host ./scripts/robot_sensors_remote.sh ...
+ROBOT_HOST="${ROBOT_HOST:-unitree@192.168.123.164}"
 ACTION="${1:-status}"
 
 case "$ACTION" in

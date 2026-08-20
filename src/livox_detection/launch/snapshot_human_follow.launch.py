@@ -26,6 +26,21 @@ def generate_launch_description():
         default_value="0.10",
         description="Detection confidence threshold",
     )
+    max_distance_arg = DeclareLaunchArgument(
+        "max_distance",
+        default_value="25.0",
+        description=("Discard detections farther than this 2D distance (m) from the sensor. "
+                     "Inference runs on the full accumulated cloud, so this is the only "
+                     "range gate -- turn it down (e.g. 5.0) for a close-range human demo."),
+    )
+    offset_ground_arg = DeclareLaunchArgument(
+        "offset_ground",
+        default_value="1.33",
+        description=("Z-shift (m) applied to points before inference and subtracted from "
+                     "output boxes -- effectively the sensor height above ground. Should "
+                     "match the Mid-360's actual mount height on the G1; a wrong value "
+                     "moves the ground plane and makes the model miss nearby people."),
+    )
     collect_frames_arg = DeclareLaunchArgument(
         "collect_frames",
         default_value="10",
@@ -97,6 +112,8 @@ def generate_launch_description():
         algorithm_arg,
         checkpoint_arg,
         score_threshold_arg,
+        max_distance_arg,
+        offset_ground_arg,
         collect_frames_arg,
         collect_duration_arg,
         input_topic_arg,
@@ -131,6 +148,23 @@ def generate_launch_description():
             condition=IfCondition(LaunchConfiguration("joint_state_publisher")),
         ),
 
+        # 1b. Sensor frame binding: the Livox driver publishes clouds in
+        # 'livox_frame' while the URDF chain ends at 'mid360_link'. Without this
+        # identity link the tree is split between the two and detections cannot
+        # be transformed into 'pelvis' -- inference still runs, so the symptom
+        # is "detections appear but have no TF". sim.launch.py has always
+        # published this. Publish it laptop-side: the robot is on Foxy and the
+        # laptop on Jazzy, and TF/String messages do not survive that CDR gap
+        # (the rmw_cyclonedds serdata.cpp:308 errors).
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="tf_mid360_to_livox",
+            arguments=["--frame-id", "mid360_link", "--child-frame-id", "livox_frame"],
+            parameters=[{"use_sim_time": False}],
+            output="log",
+        ),
+
         # 2. 2-Pass Snapshot Pipeline Node (Collects 10 frames -> Freezes Dense Cloud -> CenterPoint 3D Detection)
         Node(
             package="livox_detection",
@@ -143,10 +177,11 @@ def generate_launch_description():
                 "input_topic": LaunchConfiguration("input_topic"),
                 "target_frame": LaunchConfiguration("target_frame"),
                 "score_threshold": LaunchConfiguration("score_threshold"),
+                "max_distance": LaunchConfiguration("max_distance"),
                 "collect_frames": LaunchConfiguration("collect_frames"),
                 "collect_duration_sec": LaunchConfiguration("collect_duration_sec"),
                 "auto_start": True,
-                "offset_ground": 1.33,
+                "offset_ground": LaunchConfiguration("offset_ground"),
                 "enable_cli_input": False,
             }],
         ),

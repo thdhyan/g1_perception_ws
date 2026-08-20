@@ -61,22 +61,23 @@ if [[ "$SOURCE" == "real" ]]; then
   # LiDAR: /unitree/slam_mapping/points is the SLAM-processed cloud.
   # No /utlidar/cloud observed — use /unitree/slam_mapping/points instead.
   TOPICS=(
-    /unitree/slam_mapping/points      # PointCloud2 - SLAM-processed Mid-360 sweep
-    /lowstate                         # unitree_hg LowState - joint angles/vel/torque
-    /lf/lowstate                      # same, low-frequency redundant copy
+    # Sensors published by g1_sensors.launch.py on the robot.
+    /livox/lidar                      # PointCloud2 - raw Mid-360 sweep, frame_id=mid360_link
+    /livox/imu                        # Mid-360 onboard IMU, 200Hz
+    /camera/color/image_raw           # D435i colour
+    /camera/color/camera_info
+    /camera/depth/image_rect_raw      # D435i depth, 16UC1 mm, depth optical frame
+    /camera/depth/camera_info
+    /camera/aligned_depth_to_color/image_raw   # depth reprojected into the colour frame
+    /camera/depth/color/points        # RGB-textured depth cloud (heaviest topic here)
+    /camera/imu                       # only present when launched with camera_imu:=true
+    /joint_states                     # real encoder angles via lowstate_to_jointstate
+    # Unitree's own state, in unitree_hg messages rather than sensor_msgs.
+    /lowstate                         # joint angles/vel/torque + IMU in one message
     /secondary_imu                    # raw IMU (accel + gyro)
-    /lf/secondary_imu                 # same, LF copy
-    /lowstate_doubleimu               # dual IMU fused state
     /state_estimator/odom_pelvis      # pelvis odometry
-    /state_estimator/odom_torso       # torso odometry
-    /state_estimator/fusion_odom      # fused odometry
-    /unitree/slam_mapping/odom        # SLAM odometry
     /sportmodestate                   # high-level motion mode state
-    /lf/sportmodestate
-    # Camera: uncomment and adjust topic if a camera driver is running on robot
-    # /camera/color/image_raw
-    # /camera/depth/image_rect_raw
-    # /camera/color/camera_info
+    /unitree/slam_mapping/points      # SLAM-processed cloud, separate from /livox/lidar
     /tf
     /tf_static
   )

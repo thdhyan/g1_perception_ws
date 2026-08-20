@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 # Start sensor launch on real G1 robot (ROS Foxy) in a tmux session.
 #
+# The robot publishes LiDAR (+ its IMU), the D435i colour/depth/pointcloud/IMU,
+# real /joint_states from the Unitree encoders, and the whole TF tree. The
+# laptop publishes no TF of its own -- see g1_sensors.launch.py's docstring.
+#
 # Usage:
 #   ./scripts/start_robot_sensors.sh               # starts src/g1_sensors.launch.py by default
 #   ./scripts/start_robot_sensors.sh <launch_file> # starts custom launch file
+#
+# Launch arguments can be appended to the target, quoted as one word:
+#   ./scripts/start_robot_sensors.sh "src/g1_sensors.launch.py camera:=false pointcloud:=false"
 
-ROBOT_HOST="unitree@ubuntu.local"
+# mDNS (ubuntu.local) does not resolve on the laptop -- use the wired IP.
+# Override with:  ROBOT_HOST=unitree@other-host ./scripts/start_robot_sensors.sh
+ROBOT_HOST="${ROBOT_HOST:-unitree@192.168.123.164}"
 ROS2_WS="/home/unitree/Projects/ros2_ws"
 TMUX_SESSION="sensors"
 LAUNCH_TARGET="${1:-src/g1_sensors.launch.py}"
@@ -17,6 +26,8 @@ ssh -o StrictHostKeyChecking=no "$ROBOT_HOST" "
     tmux kill-session -t $TMUX_SESSION 2>/dev/null || true
     pkill -f g1_sensors 2>/dev/null || true
     pkill -f livox_ros_driver2 2>/dev/null || true
+    pkill -f lowstate_to_jointstate 2>/dev/null || true
+    pkill -f realsense2_camera_node 2>/dev/null || true
 "
 
 # Launch in tmux with complete CycloneDDS + ROS Foxy environment

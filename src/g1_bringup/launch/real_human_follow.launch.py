@@ -83,12 +83,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "collect_frames",
-            default_value="10",
+            default_value="3",
             description="Number of Livox LiDAR frames to accumulate in Pass 1 snapshot",
         ),
         DeclareLaunchArgument(
             "collect_duration_sec",
-            default_value="2.0",
+            default_value="0.1",
             description="Duration in seconds to accumulate point clouds in Pass 1",
         ),
         DeclareLaunchArgument(
@@ -109,7 +109,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "greeting_action",
             default_value="shake_hand",
-            description="Greeting gesture to execute upon arrival: 'shake_hand', 'low_wave', 'high_wave', or 'none'",
+            description=("Gesture on arrival: 'shake_hand', 'low_wave', 'high_wave', "
+                         "'wave_and_shake', 'none', or any G1ArmActionClient action name "
+                         "(clap, hug, heart, right_heart, high_five, hands_up, reject, "
+                         "right_hand_up, x-ray, two-hand_kiss, left_kiss, right_kiss)"),
         ),
         DeclareLaunchArgument(
             "linear_speed",
@@ -156,6 +159,24 @@ def generate_launch_description():
                 "rate": 30,
             }],
             condition=IfCondition(LaunchConfiguration("joint_state_publisher")),
+        ),
+
+        # ── 1b. Sensor frame binding ─────────────────────────────────────────
+        # The Livox driver publishes clouds in 'livox_frame'; the URDF chain
+        # ends at 'mid360_link'. Without this identity link the tree is broken
+        # between the two and detections cannot be transformed into 'pelvis' --
+        # inference still runs, so the symptom is "detections but no TF".
+        # sim.launch.py has always published this; the real-robot launch did
+        # not. Publish it here rather than on the robot: the robot is on Foxy
+        # and the laptop on Jazzy, and TF/String messages do not survive that
+        # CDR-encoding gap (see the serdata.cpp:308 errors).
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="tf_mid360_to_livox",
+            arguments=["--frame-id", "mid360_link", "--child-frame-id", "livox_frame"],
+            parameters=[{"use_sim_time": False}],
+            output="log",
         ),
 
         # ── 2. Snapshot 3D Detection Pipeline Node ────────────────────────────
