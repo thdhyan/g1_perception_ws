@@ -15,11 +15,11 @@ RViz.
 
 ## 0. Preflight
 
-| | |
-|---|---|
-| Robot | `192.168.123.164`, user `unitree`, passwordless SSH, `sudo` needs a password |
-| Laptop | `enp2s0` at `192.168.123.222/24` |
-| DDS | `ROS_DOMAIN_ID=0`, `rmw_cyclonedds_cpp`, both set by `setup_g1_env.sh` |
+|        |                                                                              |
+| ------ | ---------------------------------------------------------------------------- |
+| Robot  | `192.168.123.164`, user `unitree`, passwordless SSH, `sudo` needs a password |
+| Laptop | `enp2s0` at `192.168.123.222/24`                                             |
+| DDS    | `ROS_DOMAIN_ID=0`, `rmw_cyclonedds_cpp`, both set by `setup_g1_env.sh`       |
 
 ```bash
 ping -c 3 192.168.123.164
@@ -137,13 +137,6 @@ To run RViz separately (`rviz:=false` above):
 rviz2 -d src/livox_detection/config/livox_human_viz.rviz
 ```
 
-Other backends:
-
-```bash
-ros2 launch g1_bringup real_live_detection.launch.py algorithm:=pointpillar \
-  checkpoint_path:=/home/thakk100/Projects/Thesis/livox_detection/pt/livox_model_1.pt
-```
-
 ## 4. Human sorting
 
 ```bash
@@ -159,26 +152,26 @@ below selects from.
 One terminal for all three. Needs the bridge from step 2. **The robot walks.**
 
 ```bash
-ros2 run livox_detection human_keyboard_selector_node --ros-args \
-  -p input_topic:=/g1/sorted_humans \
-  -p linear_speed:=0.3 -p yaw_rate:=0.5
+    ros2 run livox_detection human_keyboard_selector_node --ros-args \
+      -p input_topic:=/g1/sorted_humans \
+      -p linear_speed:=0.3 -p yaw_rate:=0.5
 ```
 
-| Keys | |
-|---|---|
-| `W` `A` `S` `D` | walk forward / strafe left / back / strafe right |
-| `Q` `E` | turn left / right |
-| `SPACE` | **EMERGENCY STOP** — overrides everything in flight (see below) |
-| `Z` `X` | linear speed −/+ 0.05 m/s |
-| `-` `+` | yaw rate −/+ 0.10 rad/s |
-| `1`–`9` | lock onto human #1..#9 |
-| `0` / `C` | clear selection |
-| `R` | rescan: fresh cloud + re-run detection (halts the robot first) |
-| `T` | same as `R`, via `/g1/trigger_snapshot` |
-| `Y` | **YES — confirm the approach** and walk to the selected human |
-| `H` | greet where the robot stands, without approaching |
-| `V` `B` `N` `M` `,` `.` | shake hand, high wave, low wave, high five, heart, hands up |
-| `ESC` | quit (halts the robot on the way out) |
+| Keys                    |                                                                 |
+| ----------------------- | --------------------------------------------------------------- |
+| `W` `A` `S` `D`         | walk forward / strafe left / back / strafe right                |
+| `Q` `E`                 | turn left / right                                               |
+| `SPACE`                 | **EMERGENCY STOP** — overrides everything in flight (see below) |
+| `Z` `X`                 | linear speed −/+ 0.05 m/s                                       |
+| `-` `+`                 | yaw rate −/+ 0.10 rad/s                                         |
+| `1`–`9`                 | lock onto human #1..#9                                          |
+| `0` / `C`               | clear selection                                                 |
+| `R`                     | rescan: fresh cloud + re-run detection (halts the robot first)  |
+| `T`                     | same as `R`, via `/g1/trigger_snapshot`                         |
+| `Y`                     | **YES — confirm the approach** and walk to the selected human   |
+| `H`                     | greet where the robot stands, without approaching               |
+| `V` `B` `N` `M` `,` `.` | shake hand, high wave, low wave, high five, heart, hands up     |
+| `ESC`                   | quit (halts the robot on the way out)                           |
 
 Motion is hold-to-move: velocity decays to zero `key_hold_timeout` (0.5 s) after
 the last keypress, so letting go stops the robot rather than leaving it walking.
@@ -225,16 +218,17 @@ ros2 launch g1_bringup real_human_follow.launch.py \
   algorithm:=voxelnext \
   offset_ground:=-0.3 \
   score_threshold:=0.2 \
-  standoff_distance:=0.80 \
-  greeting_action:=shake_hand \
-  auto_execute:=false
+  standoff_distance:=1.20 \
+  greeting_action:=low_wave \
+  auto_execute:=false \
+  linear_speed:=0.4
 ```
 
 `auto_execute:=false` keeps the robot still until you press `Y` — start there.
 
 Approach behaviour is set on this launch, not in the console:
-`standoff_distance` (default **1.50 m**) is where the robot stops in front of the
-human, and `linear_speed` (default **0.30 m/s**) is the walk-up speed. Both are
+`standoff_distance` (default **1.20 m**) is where the robot stops in front of the
+human, and `linear_speed` (default **0.40 m/s**) is the walk-up speed. Both are
 forwarded to `human_follow_and_greet_node`, whose own bare defaults (0.60 m,
 0.50 m/s) only apply if you run that node with `ros2 run`.
 
@@ -280,7 +274,7 @@ sudo rmmod hid_sensor_accel_3d hid_sensor_gyro_3d hid_sensor_trigger
 Then relaunch with `camera_imu:=true`. The Mid-360's IMU (`/livox/imu`, 200 Hz)
 is unaffected.
 
-**`Backend init warning: Cannot import pcdet ... Using PointPillar clustering
+**`Backend init warning: Cannot import pcdet ... using a generic clustering
 fallback`.** VoxelNeXt was not found and the node silently degraded — a
 detection run that looks alive but is not running the model you asked for. Check
 the resolved path:

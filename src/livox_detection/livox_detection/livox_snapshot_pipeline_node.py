@@ -48,9 +48,7 @@ from vision_msgs.msg import (
 )
 from visualization_msgs.msg import Marker, MarkerArray
 
-from .centerpoint_model import CLASS_COLORS, CLASS_NAMES, CenterPointBackend
-from .pointpillar_model import PointPillarBackend
-from .voxelnext_model import VoxelNeXtBackend
+from .voxelnext_model import CLASS_COLORS, CLASS_NAMES, VoxelNeXtBackend
 
 
 def yaw_to_quaternion(yaw: float) -> tuple[float, float, float, float]:
@@ -72,10 +70,11 @@ class LivoxSnapshotPipelineNode(Node):
         super().__init__("g1_livox_snapshot_pipeline")
 
         # Parameters
-        self.declare_parameter("algorithm", "centerpoint")
+        self.declare_parameter("algorithm", "voxelnext")  # "voxelnext" — only supported backend
+        _ws_root_str = str(Path(__file__).resolve().parents[3])
         self.declare_parameter(
             "checkpoint_path",
-            "/home/thakk100/Projects/Thesis/livox_detection/pt/livox_model_1.pt",
+            str(Path(_ws_root_str) / "pt" / "voxelnext_nuscenes.pth"),
         )
         self.declare_parameter("input_topic", "/livox/lidar")
         self.declare_parameter("target_frame", "pelvis")
@@ -89,8 +88,6 @@ class LivoxSnapshotPipelineNode(Node):
         self.declare_parameter("front_max_range", 15.0)
         self.declare_parameter("front_min_x", 0.0)
         self.declare_parameter("offset_ground", 1.33)
-        # VoxelNeXt-specific parameters
-        _ws_root_str = str(Path(__file__).resolve().parents[3])
         self.declare_parameter(
             "voxelnext_cfg",
             str(Path(_ws_root_str) / "VoxelNeXt" / "tools" / "cfgs" / "nuscenes_models" / "cbgs_voxel0075_voxelnext.yaml"),
@@ -98,6 +95,11 @@ class LivoxSnapshotPipelineNode(Node):
         self.declare_parameter("voxelnext_dir", str(Path(_ws_root_str) / "VoxelNeXt"))
 
         self.algorithm = self.get_parameter("algorithm").value.lower()
+        if self.algorithm != "voxelnext":
+            self.get_logger().warning(
+                f"algorithm '{self.algorithm}' is no longer supported; using 'voxelnext'."
+            )
+            self.algorithm = "voxelnext"
         self.checkpoint_path = self.get_parameter("checkpoint_path").value
         self.input_topic = self.get_parameter("input_topic").value
         self.target_frame = self.get_parameter("target_frame").value
@@ -242,40 +244,24 @@ class LivoxSnapshotPipelineNode(Node):
         print("Press [ENTER] to take snapshot: ", end="", flush=True)
 
     def _init_backend(self) -> None:
-        """Initialize CenterPoint, PointPillars, or VoxelNeXt backend."""
+        """Initialize the VoxelNeXt detection backend (OpenPCDet)."""
         try:
-            if self.algorithm == "pointpillar":
-                self.backend = PointPillarBackend(
-                    checkpoint="",
-                    device=self.device,
-                    score_threshold=self.score_threshold,
-                )
-            elif self.algorithm == "voxelnext":
-                self.backend = VoxelNeXtBackend(
-                    checkpoint=self.checkpoint_path,
-                    device=self.device,
-                    score_threshold=self.score_threshold,
-                    offset_ground=self.offset_ground,
-                    cfg_file=self.voxelnext_cfg,
-                    voxelnext_dir=self.voxelnext_dir,
-                )
-            else:
-                self.backend = CenterPointBackend(
-                    checkpoint=self.checkpoint_path,
-                    device=self.device,
-                    score_threshold=self.score_threshold,
-                    offset_ground=self.offset_ground,
-                )
-            self.backend.load()
-            self.get_logger().info(f"Loaded backend: {self.algorithm}")
-        except Exception as e:
-            self.get_logger().warning(f"Backend init warning: {e}. Using PointPillars clustering fallback.")
-            self.backend = PointPillarBackend(
-                checkpoint="",
+            self.backend = VoxelNeXtBackend(
+                checkpoint=self.checkpoint_path,
                 device=self.device,
                 score_threshold=self.score_threshold,
+                offset_ground=self.offset_ground,
+                cfg_file=self.voxelnext_cfg,
+                voxelnext_dir=self.voxelnext_dir,
             )
             self.backend.load()
+            self.get_logger().info("Loaded backend: voxelnext")
+        except Exception as e:
+            self.backend = None
+            self.get_logger().error(
+                f"VoxelNeXt backend unavailable ({e}). Detection disabled — "
+                f"build pcdet from VoxelNeXt/ (python setup.py develop) and install spconv-cu121."
+            )
 
     def trigger_collection(self) -> None:
         """Trigger a new point cloud collection cycle."""
@@ -399,7 +385,16 @@ class LivoxSnapshotPipelineNode(Node):
 
         # 2. Run single 3D detection pass
         t0 = time.time()
-        boxes, scores, labels = self.backend.infer(merged_points)
+        if self.backend is None:
+            boxes = np.zeros((0, 7), dtype=np.float32)
+            scores = np.zeros((0,), dtype=np.float32)
+            labels = np.zeros((0,), dtype=np.int64)
+            self.get_logger().warning(
+                "VoxelNeXt backend unavailable; publishing empty detections.",
+                throttle_duration_sec=5.0,
+            )
+        else:
+            boxes, scores, labels = self.backend.infer(merged_points)
         infer_time = (time.time() - t0) * 1000.0
 
         if boxes.shape[0] > 0 and self.max_distance > 0:

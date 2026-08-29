@@ -2,11 +2,12 @@
 """
 human_selector_node.py
 
-ROS2 node that detects humans from CenterPoint detection output, presents a
-numbered CLI menu for user selection, and publishes the selected human's pose.
+ROS2 node that detects humans from VoxelNeXt detection output (livox_detection),
+presents a numbered CLI menu for user selection, and publishes the selected
+human's pose.
 
 Subscribes:
-    /g1/detections/centerpoint  (vision_msgs/Detection3DArray)
+    /g1/detections/livox  (vision_msgs/Detection3DArray)
 
 Publishes:
     /g1/selected_human          (geometry_msgs/PoseStamped)
@@ -36,7 +37,7 @@ class HumanSelectorNode(Node):
         super().__init__('g1_human_selector')
 
         # ---------- Parameters ----------
-        self.declare_parameter('detection_topic', '/g1/detections/centerpoint')
+        self.declare_parameter('detection_topic', '/g1/detections/livox')
         self.declare_parameter('min_score', 0.3)
         self.declare_parameter('redetect_cooldown_sec', 3.0)
 

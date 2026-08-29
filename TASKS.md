@@ -13,7 +13,7 @@ graph TD
     end
 
     subgraph "Perception Layer"
-        GZ_BRIDGE -->|/livox/mid360/points| PP[PointPillars 3D Human Detection]
+        GZ_BRIDGE -->|/livox/mid360/points| PP[VoxelNeXt 3D Human Detection]
         PP -->|/g1/detections/lidar_raw| DET_PUB[Human 3D Bounding Boxes & Markers]
     end
 
@@ -40,7 +40,7 @@ graph TD
 |---|---|---|---|
 | **T1** | `g1_description` | ✅ Completed | 29-DOF URDF with Gazebo Harmonic ODE physics, joint gains, sensor frames, and RViz displays. |
 | **T2** | `g1_bringup` | ✅ Completed | Launch system supporting simulation (`sim.launch.py`, `sim_teleop.launch.py`) and real robot deployment. |
-| **T3** | `livox_detection` | ✅ Completed | PointPillars & CenterPoint PyTorch/CUDA 3D bounding box detection on raw Livox Mid-360 point clouds. |
+| **T3** | `livox_detection` | ✅ Completed | VoxelNeXt PyTorch/CUDA 3D bounding box detection on raw Livox Mid-360 point clouds. |
 | **T4** | `plain_slam_ros2` | ✅ Completed | 3D LiDAR-Inertial Odometry and Graph SLAM generating filtered global pointcloud maps. |
 | **T5** | `g1_wbc` | ✅ Completed | GR00T ONNX whole-body balance and walk policy execution with stance holding and watchdog deadman. |
 | **T6** | `g1_nav` | ✅ Completed | Interactive WASDQE keyboard teleoperation and Nav2 navigation stack integration. |
@@ -56,7 +56,7 @@ graph TD
 - **Joint Order & Gains**: Explicitly drives the 15 leg and waist joints with policy-trained PD gains (`kp` 40..250, `kd` 2..5) while maintaining the 14 upper-body arm joints at zero.
 
 ### 3.2. 3D Perception & Human Detection (`livox_detection`)
-- **Backend**: PointPillars (`pointpillar_model.py`) optimized for CUDA inference on point clouds from `/livox/mid360/points`.
+- **Backend**: VoxelNeXt (`pt/voxelnext_nuscenes.pth`) optimized for CUDA inference on point clouds from `/livox/mid360/points`.
 - **Target Frame**: Bounding box centers transformed to the `pelvis` frame and visualized via RViz markers on `/g1/detection_markers/livox`.
 
 ### 3.3. 3D SLAM & Odometry (`plain_slam_ros2`)

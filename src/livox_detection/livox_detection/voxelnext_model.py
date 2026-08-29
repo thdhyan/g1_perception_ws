@@ -5,8 +5,11 @@ VoxelNeXt (Chen et al., CVPR 2023) — fully sparse, anchor-free 3D object
 detector. Predicts objects directly on sparse voxel features without any
 sparse-to-dense BEV conversion, anchors, or center proxies.
 
-This module wraps the OpenPCDet-based VoxelNeXt model to match the same
-infer() interface used by CenterPointBackend and PointPillarBackend.
+This module wraps the OpenPCDet-based VoxelNeXt model:
+
+    backend = VoxelNeXtBackend(...)
+    backend.load()
+    boxes, scores, labels = backend.infer(points)
 
 Requires:
     - pcdet (built from VoxelNeXt repo via `python setup.py develop`)
@@ -75,13 +78,13 @@ def mask_points_out_of_range(pc: np.ndarray, pc_range: list[float]) -> np.ndarra
     return pc[mask_x & mask_y & mask_z]
 
 
+# Shared aliases used across the livox_detection package
+CLASS_NAMES = G1_CLASS_NAMES
+CLASS_COLORS = G1_CLASS_COLORS
+
+
 class VoxelNeXtBackend:
     """VoxelNeXt 3D detection backend using OpenPCDet framework.
-
-    Same interface as CenterPointBackend / PointPillarBackend:
-        backend = VoxelNeXtBackend(...)
-        backend.load()
-        boxes, scores, labels = backend.infer(points)
 
     Args:
         checkpoint: Path to VoxelNeXt .pth checkpoint file.

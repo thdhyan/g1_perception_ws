@@ -19,13 +19,13 @@ def generate_launch_description():
     # Launch Arguments
     algorithm_arg = DeclareLaunchArgument(
         "algorithm",
-        default_value="centerpoint",
-        description="Detection algorithm: 'centerpoint' or 'pointpillar'",
+        default_value="voxelnext",
+        description="Detection algorithm (only 'voxelnext' is supported)",
     )
     checkpoint_arg = DeclareLaunchArgument(
         "checkpoint_path",
-        default_value="/home/thakk100/Projects/Thesis/livox_detection/pt/livox_model_1.pt",
-        description="Path to CenterPoint checkpoint (.pt)",
+        default_value=os.path.expanduser("~/Projects/thesis/g1_perception_ws/pt/voxelnext_nuscenes.pth"),
+        description="Path to VoxelNeXt checkpoint (.pth)",
     )
     score_threshold_arg = DeclareLaunchArgument(
         "score_threshold",

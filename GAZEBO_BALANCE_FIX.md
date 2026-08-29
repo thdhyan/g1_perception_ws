@@ -126,7 +126,7 @@ ros2 topic pub --once /g1/cmd_vel geometry_msgs/msg/Twist "{}"
 The `.venv` (uv, `include-system-site-packages=true`) now has everything the
 WBC needs: `rclpy` + ROS msg packages (system-site, via `setup.bash`) and
 `onnxruntime` 1.28.0 (CPU) installed into it. `torch` 2.3.1+cu121 is already
-there for the CenterPoint detection node.
+there for the VoxelNeXt detection node.
 
 Run the launch with the venv's interpreter first on PATH:
 

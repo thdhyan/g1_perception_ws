@@ -108,7 +108,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /g1/detection_markers/centerpoint
+        Value: /g1/detection_markers/livox
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true

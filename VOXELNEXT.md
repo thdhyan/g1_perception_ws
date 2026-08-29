@@ -7,8 +7,8 @@
 ## 1. Why VoxelNeXt for G1 Humanoid Perception?
 
 Existing 3D detectors suffer from distinct drawbacks when detecting humans from robot-mounted LiDAR:
-- **PointPillars**: Anchor-based detector with a 2D pillar footprint. Relies on rigid bounding box aspect ratio priors; struggles to generalize to non-slender humans (e.g. broad builds, heavy coats, or unusual postures).
-- **CenterPoint**: Requires dense sparse-to-dense BEV projection. Often trained with high-mounted automotive LiDAR priors; sensitive to vertical point density changes.
+- **Anchor-based pillar detectors**: 2D pillar footprint. Rely on rigid bounding box aspect ratio priors; struggle to generalize to non-slender humans (e.g. broad builds, heavy coats, or unusual postures).
+- **Sparse-to-dense BEV projection detectors**: Often trained with high-mounted automotive LiDAR priors; sensitive to vertical point density changes.
 - **VoxelNeXt**: **Directly predicts 3D bounding boxes from sparse 3D voxel features.** It has NO BEV conversion, NO anchors, and NO center proxies. This enables it to maintain full 3D spatial geometry and reliably detect humans regardless of body proportion, stance, or attire.
 
 ---

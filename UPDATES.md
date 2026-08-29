@@ -39,7 +39,7 @@ This document tracks all recent updates, technical implementations, bug fixes, a
 
 #### 5. Perception & Detection Backend
 - **File**: [`livox_detection_node.py`](file:///home/thakk100/Projects/thesis/g1_perception_ws/src/livox_detection/livox_detection/livox_detection_node.py)
-- **Backend**: PointPillars architecture (`pointpillar_model.py`) loading on CUDA device.
+- **Backend**: VoxelNeXt architecture (`pt/voxelnext_nuscenes.pth`) loading on CUDA device.
 - **Detections**: Generates 3D bounding boxes and pedestrian classification markers for warehouse human actors.
 
 ---

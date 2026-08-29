@@ -13,7 +13,7 @@ cannot move the robot at all.
 Uses the continuous detector (livox_detection_node, sliding accumulation +
 inference every frame) rather than the 2-pass snapshot pipeline.
 
-Supported backends: 'voxelnext', 'centerpoint', 'pointpillar'.
+Supported backends: 'voxelnext' (only).
 
 All TF is computed ON THE ROBOT (real encoders -> /joint_states -> /tf); this
 launch publishes no TF of its own. See the comment in section 1 below.
@@ -28,7 +28,6 @@ Prerequisites:
 
 Usage:
   ros2 launch g1_bringup real_live_detection.launch.py algorithm:=voxelnext
-  ros2 launch g1_bringup real_live_detection.launch.py algorithm:=pointpillar
 """
 
 import os
@@ -49,8 +48,8 @@ def generate_launch_description():
     # Walk up to the workspace root rather than counting parents: this file is
     # reached through install/ or, under --symlink-install, through src/, and the
     # two are at different depths. A fixed parents[N] silently lands on
-    # ~/Projects/thesis instead, so VoxelNeXt is never found and the node falls
-    # back to PointPillar clustering with only a warning ("No module named 'pcdet'").
+    # ~/Projects/thesis instead, so VoxelNeXt is never found and the node logs
+    # a backend-load error (empty detections) ("No module named 'pcdet'").
     ws_root = next(
         (p for p in Path(__file__).resolve().parents if (p / "VoxelNeXt").is_dir()),
         Path(__file__).resolve().parents[4],
@@ -65,14 +64,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "algorithm",
             default_value="voxelnext",
-            description="Detection backend: 'voxelnext', 'centerpoint', or 'pointpillar'",
+            description="Detection backend (only 'voxelnext' is supported)",
         ),
         DeclareLaunchArgument(
             "checkpoint_path",
             default_value=voxelnext_ckpt_default,
-            description=("Model checkpoint. VoxelNeXt: pt/voxelnext_nuscenes.pth. "
-                         "CenterPoint/PointPillar: "
-                         "/home/thakk100/Projects/Thesis/livox_detection/pt/livox_model_1.pt"),
+            description="Model checkpoint (VoxelNeXt: pt/voxelnext_nuscenes.pth)",
         ),
         DeclareLaunchArgument(
             "voxelnext_cfg",
@@ -100,7 +97,7 @@ def generate_launch_description():
             "max_hz",
             default_value="5.0",
             description=("Inference rate cap (Hz). VoxelNeXt measures ~4.0-4.2Hz achieved "
-                         "against a 5Hz cap on this GPU; CenterPoint/PointPillar tolerate 10.0"),
+                         "against a 5Hz cap on this GPU"),
         ),
         DeclareLaunchArgument(
             "accumulate_frames",

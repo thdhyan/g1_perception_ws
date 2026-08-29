@@ -24,7 +24,7 @@ Complete guide for operating the full-stack perception, 3D detection, human foll
          ├─ robot_state_publisher & TF Tree
          ├─ 2-Pass Snapshot Pipeline Node:
          │    ├─ Pass 1: Accumulate dense point cloud (10 frames / 2.0s)
-         │    └─ Pass 2: 3D Detection (VoxelNeXt / CenterPoint / PointPillars)
+         │    └─ Pass 2: 3D Detection (VoxelNeXt)
          ├─ Distance Sorter & Non-Flicker Human Selection
          ├─ human_follow_and_greet_node:
          │    ├─ Approaching: Computes standoff goal in pelvis frame
@@ -86,7 +86,7 @@ python3 src/g1_control/g1_control/robot_bridge.py
 
 ### Step 3: Launch Full Human Perception & Follow Stack (Terminal 2)
 
-#### Option A: Run with **VoxelNeXt** (State-of-the-Art Fully-Sparse 3D Detector - Recommended)
+#### Option A: Run with **VoxelNeXt** (State-of-the-Art Fully-Sparse 3D Detector)
 ```bash
 cd /home/thakk100/Projects/thesis/g1_perception_ws
 source setup_g1_env.sh
@@ -97,30 +97,13 @@ ros2 launch g1_bringup real_human_follow.launch.py \
   greeting_action:=shake_hand
 ```
 
-#### Option B: Run with **CenterPoint**
-```bash
-cd /home/thakk100/Projects/thesis/g1_perception_ws
-source setup_g1_env.sh
-ros2 launch g1_bringup real_human_follow.launch.py \
-  algorithm:=centerpoint \
-  checkpoint_path:=/home/thakk100/Projects/Thesis/livox_detection/pt/livox_model_1.pt
-```
-
-#### Option C: Run with **PointPillars** (Geometry Clustering Fallback)
-```bash
-cd /home/thakk100/Projects/thesis/g1_perception_ws
-source setup_g1_env.sh
-ros2 launch g1_bringup real_human_follow.launch.py \
-  algorithm:=pointpillar
-```
-
 ---
 
 ## 4. Key Launch Parameters
 
 | Parameter | Default | Options / Range | Description |
 |---|---|---|---|
-| `algorithm` | `voxelnext` | `voxelnext`, `centerpoint`, `pointpillar` | 3D detection model backend |
+| `algorithm` | `voxelnext` | `voxelnext` | 3D detection model backend |
 | `checkpoint_path` | `pt/voxelnext_nuscenes.pth` | File path (.pth / .pt) | Model checkpoint path |
 | `standoff_distance` | `0.80` | `0.4` - `2.0` (meters) | Distance to stop in front of target human |
 | `greeting_action` | `shake_hand` | `shake_hand`, `high_wave`, `low_wave`, `none` | Arm gesture executed on arrival |

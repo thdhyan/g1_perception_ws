@@ -1,0 +1,44 @@
+g1_audio_bridge:
+  ros__parameters:
+    socket_path: /tmp/g1_audio_backend.sock
+    speaker_id: 1          # 0 = Chinese TTS voice, 1 = English
+    min_confidence: 0.0    # drop ASR results below this
+    reconnect_period: 2.0
+
+g1_mic:
+  ros__parameters:
+    group_ip: 239.168.123.161
+    port: 5555
+    local_ip: ""           # "" autodetects the 192.168.123.x interface
+    subnet_prefix: "192.168.123."
+    publish_raw: true
+    rms_threshold: 500.0
+    silence_ms: 700
+    min_utterance_ms: 300
+    max_utterance_ms: 15000
+
+g1_dialog:
+  ros__parameters:
+    # Tried in order; a backend that fails is skipped for retry_after seconds.
+    # Robot's own Jetson (onboard Ollama) intentionally left out of the chain.
+    llm_chain: >-
+      [{"name": "lab", "kind": "ollama",
+        "host": "http://128.101.125.152:11434", "model": "gemma4:latest"},
+       {"name": "openai", "kind": "openai",
+        "host": "https://api.openai.com/v1", "model": "gpt-4o-mini"}]
+    system_prompt: >-
+      You are a Unitree G1 robot at the Reality Capture Lab at the University
+      of Minnesota, and you are being developed at the College of Science and
+      Engineering. Your replies are spoken aloud through the robot's speaker,
+      so write plain spoken English: no markdown, no emoji, no lists, no code.
+      Answer in two or three sentences unless you are asked to explain
+      something in depth.
+    history_turns: 6
+    max_reply_chars: 2000  # ~2 minutes of speech at 150 wpm
+    connect_timeout: 2.0   # how fast a dead backend is given up on
+    request_timeout: 60.0
+    retry_after: 60.0
+    temperature: 0.7
+    wake_word: ""          # e.g. "robot" to require a trigger word
+    min_chars: 2
+    use_led: true

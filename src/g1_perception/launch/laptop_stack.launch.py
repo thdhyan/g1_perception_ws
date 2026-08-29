@@ -59,15 +59,16 @@ NODES LAUNCHED (in order)
    - Publishes: /map, /map_metadata, TF map→odom
    - Config: slam_toolbox_params.yaml
 
-5. centerpoint_node (g1_perception)
-   - 3D object detection from /livox/mid360/points
-   - Publishes: /g1/detections/centerpoint, /g1/detection_markers/centerpoint
-   - Checkpoint: pt/livox_model_1.pt (default)
+5. livox_detection_node (livox_detection package, VoxelNeXt backend)
+   - 3D object detection from /livox/lidar
+   - Publishes: /g1/detections/livox, /g1/detection_markers/livox
+     (+ /g1/detections/voxelnext and /g1/detection_markers/voxelnext aliases)
+   - Checkpoint: pt/voxelnext_nuscenes.pth (default)
    - Device: cuda (default)
 
 6. human_selector_node (g1_perception)
    - Interactive: filters detections, prompts user for target human
-   - Subscribes: /g1/detections/centerpoint
+   - Subscribes: /g1/detections/livox
 
 7. nav_goal_node (g1_perception)
    - Sends Nav2 NavigateToPose goals
@@ -104,10 +105,12 @@ from launch_ros.substitutions import FindPackageShare
 from launch_ros.parameter_descriptions import ParameterValue
 from launch.actions import TimerAction, ExecuteProcess
 
-# IsaacLab venv has torch 2.11+CUDA — inject into PYTHONPATH so centerpoint_node can import it
-_ISAAC_SITE_PKGS = "/home/thakk100/Projects/IsaacLab/.venv-isaac/lib/python3.12/site-packages"
-_G1SIM_DETECTION = "/home/thakk100/Projects/thesis/G1_sim/detection"
-_EXTRA_PYTHONPATH = f"{_ISAAC_SITE_PKGS}:{_G1SIM_DETECTION}"
+# Workspace venv has torch+CUDA + spconv — inject into PYTHONPATH so the
+# VoxelNeXt detection node (livox_detection package) can import it
+_WS_VENV_SITE_PKGS = os.path.expanduser(
+    "~/Projects/thesis/g1_perception_ws/.venv/lib/python3.12/site-packages"
+)
+_EXTRA_PYTHONPATH = _WS_VENV_SITE_PKGS
 
 
 def launch_setup(context, *args, **kwargs):
@@ -146,20 +149,20 @@ def generate_launch_description():
 
     declare_checkpoint_path = DeclareLaunchArgument(
         "checkpoint_path",
-        default_value="/home/thakk100/Projects/thesis/G1_sim/detection/pt/livox_model_1.pt",
-        description="Path to CenterPoint checkpoint"
+        default_value=os.path.expanduser("~/Projects/thesis/g1_perception_ws/pt/voxelnext_nuscenes.pth"),
+        description="Path to VoxelNeXt checkpoint"
     )
 
     declare_device = DeclareLaunchArgument(
         "device",
         default_value="cuda",
-        description="Device for CenterPoint inference: 'cuda' or 'cpu'"
+        description="Device for VoxelNeXt inference: 'cuda' or 'cpu'"
     )
 
     declare_score_threshold = DeclareLaunchArgument(
         "score_threshold",
         default_value="0.4",
-        description="Score threshold for CenterPoint detections"
+        description="Score threshold for VoxelNeXt detections"
     )
 
     declare_interface = DeclareLaunchArgument(
@@ -254,15 +257,23 @@ def generate_launch_description():
         )],
     )
 
-    # 5. CenterPoint 3D Object Detection
-    centerpoint_node = Node(
-        package="g1_perception",
-        executable="centerpoint_node",
-        name="centerpoint_node",
+    # 5. VoxelNeXt 3D Object Detection (livox_detection package)
+    detection_node = Node(
+        package="livox_detection",
+        executable="livox_detection_node",
+        name="livox_detection_node",
         parameters=[{
+            "algorithm": "voxelnext",
             "checkpoint_path": checkpoint_path,
+            "voxelnext_cfg": os.path.expanduser(
+                "~/Projects/thesis/g1_perception_ws/VoxelNeXt/tools/cfgs/nuscenes_models/cbgs_voxel0075_voxelnext.yaml"
+            ),
+            "voxelnext_dir": os.path.expanduser("~/Projects/thesis/g1_perception_ws/VoxelNeXt"),
             "device": device,
             "score_threshold": score_threshold,
+            "input_topic": "/livox/lidar",
+            "class_filter": "pedestrian",
+            "target_frame": "pelvis",
         }],
         output="screen",
     )
@@ -273,7 +284,7 @@ def generate_launch_description():
         executable="human_selector_node",
         name="human_selector_node",
         parameters=[{
-            "detection_topic": "/g1/detections/centerpoint",
+            "detection_topic": "/g1/detections/livox",
             "min_score": score_threshold,
         }],
         output="screen",
@@ -354,7 +365,7 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration("launch_rviz")),
     )
 
-    # Inject torch-capable PYTHONPATH for centerpoint_node (needs IsaacLab venv + G1_sim path)
+    # Inject torch-capable PYTHONPATH for the VoxelNeXt detection node (workspace venv)
     _existing_pp = os.environ.get("PYTHONPATH", "")
     _merged_pp = f"{_EXTRA_PYTHONPATH}:{_existing_pp}" if _existing_pp else _EXTRA_PYTHONPATH
     set_pythonpath = SetEnvironmentVariable("PYTHONPATH", _merged_pp)
@@ -385,7 +396,7 @@ def generate_launch_description():
         slam_toolbox,
         slam_configure,
         slam_activate,
-        centerpoint_node,
+        detection_node,
         human_selector_node,
         lidar_odometry,
         rviz_node,

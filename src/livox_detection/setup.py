@@ -18,7 +18,7 @@ setup(
     zip_safe=True,
     maintainer="thakk100",
     maintainer_email="th.dhyan.us@gmail.com",
-    description="Livox LiDAR 3D object detection using CenterPoint inference.",
+    description="Livox LiDAR 3D object detection using VoxelNeXt inference.",
     license="MIT",
     tests_require=["pytest"],
     entry_points={
@@ -31,6 +31,7 @@ setup(
             "human_loco_approach_node = livox_detection.human_loco_approach_node:main",
             "livox_snapshot_pipeline_node = livox_detection.livox_snapshot_pipeline_node:main",
             "livox_front_filter_node = livox_detection.livox_front_filter_node:main",
+            "person_namer_node = livox_detection.person_namer_node:main",
         ],
     },
 )

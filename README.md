@@ -1,6 +1,6 @@
 # G1 Perception Workspace
 
-ROS2 Jazzy (laptop) + ROS Foxy (robot) full-stack perception, SLAM, navigation, and control pipeline for Unitree G1 humanoid — Livox Mid-360 LiDAR + RealSense D435I + CenterPoint 3D detection + Nav2 + human follower.
+ROS2 Jazzy (laptop) + ROS Foxy (robot) full-stack perception, SLAM, nav, control pipeline for Unitree G1 humanoid — Livox Mid-360 LiDAR + RealSense D435I + VoxelNeXt 3D detection + Nav2 + human follower.
 
 **Laptop environment:**
 
@@ -26,7 +26,7 @@ g1_perception_ws/
 │   ├── g1_nav/                 # SLAM Toolbox + Nav2 configs
 │   ├── g1_control/             # cmd_vel_bridge, human_follower, robot_bridge
 │   ├── g1_wbc/                 # GR00T ONNX whole-body balance/walk policy (sim)
-│   ├── livox_detection/        # VoxelNeXt/CenterPoint 3D detection node
+│   ├── livox_detection/        # VoxelNeXt 3D detection node
 │   └── plain_slam_ros2/        # CPU LIO + pose-graph SLAM (submodule, sim "3d" slam_type)
 ├── isaac_ros_ws/                # Isaac ROS (cuVSLAM + nvblox) — own CUDA 13 Docker env, see below
 │   └── src/                    # isaac_ros_common/visual_slam/nvblox/image_segmentation/nitros (submodules)
@@ -73,7 +73,7 @@ export ROS_DOMAIN_ID=1   # must match robot
 ros2 launch g1_description description.launch.py rviz:=true
 ```
 
-RViz shows: robot model, TF tree, LiDAR PCL, camera RGB, camera depth, detection markers, nav goal, odom path.
+RViz show: robot model, TF tree, LiDAR PCL, camera RGB, camera depth, detection markers, nav goal, odom path.
 
 ### 3. On laptop — run full perception + navigation
 
@@ -98,9 +98,9 @@ Packages built: `g1_description`, `g1_bringup`, `g1_control`, `g1_nav`, `livox_d
 
 ## Build (robot side)
 
-The robot runs `g1_sensors.launch.py` directly from source — no colcon build needed for the launch file. The packages that run as ROS2 nodes on the robot (`livox_ros_driver2`, `realsense2_camera`, `robot_state_publisher`, `lowstate_to_jointstate`) are already built in `/home/unitree/Projects/ros2_ws/`.
+Robot run `g1_sensors.launch.py` straight from source — no colcon build need for launch file. Packages that run as ROS2 nodes on robot (`livox_ros_driver2`, `realsense2_camera`, `robot_state_publisher`, `lowstate_to_jointstate`) already built in `/home/unitree/Projects/ros2_ws/`.
 
-If you make changes to those packages on the robot:
+Change those packages on robot? Do this:
 
 ```bash
 ssh unitree@192.168.123.164
@@ -109,13 +109,13 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-The `g1_sensors.launch.py` and `g1_start_sensors.sh` are Python scripts, not compiled — changes take effect immediately after `scp`.
+`g1_sensors.launch.py` and `g1_start_sensors.sh` = Python scripts, not compiled — changes take effect right after `scp`.
 
 ---
 
 ## G1 Startup Nodes
 
-What each launch entrypoint actually brings up, process by process.
+What each launch entrypoint bring up, process by process.
 
 ### Sim — `g1_bringup sim.launch.py` / `sim_teleop.launch.py`
 
@@ -137,7 +137,7 @@ What each launch entrypoint actually brings up, process by process.
 ### Real robot — `g1_sensors.launch.py` (on robot) + `g1_bringup full_real.launch.py` (laptop)
 
 | Process                              | package / executable                            | Role                                                                       |
-| ------------------------------------ | ----------------------------------------------- | -------------------------------------------------------------------------- |
+| ------------------------------------ | ------------------------------------------------ | -------------------------------------------------------------------------- |
 | `livox_ros_driver2_node`             | `livox_ros_driver2`                             | Mid-360 → `/livox/lidar` PointCloud2, 10Hz                                 |
 | `realsense2_camera_node`             | `realsense2_camera` (in `g1_sensors.launch.py`) | D435I RGB + depth + PCL2 + IMU                                             |
 | `lowstate_to_jointstate_node`        | `lowstate_to_jointstate`                        | Unitree DDS lowstate → `/joint_states`                                     |
@@ -148,8 +148,8 @@ What each launch entrypoint actually brings up, process by process.
 | `human_follower_node`                | `g1_control`                                    | `/g1/selected_human` → nav goal                                            |
 | SLAM/Nav2                            | `g1_nav`, `slam_toolbox`                        | `full_real.launch.py slam:=true`                                           |
 
-Prefer `g1_start_sensors.sh` over launching `g1_sensors.launch.py` directly —
-staggers node startup 4–6s apart to avoid the DDS discovery OOM (see
+Prefer `g1_start_sensors.sh` over launch `g1_sensors.launch.py` direct —
+staggers node startup 4–6s apart, dodge DDS discovery OOM (see
 [Known Issues](#dds-discovery-oom-on-robot-critical)).
 
 ---
@@ -184,13 +184,13 @@ Launch orchestration.
 Robot control nodes.
 
 | Node                     | Role                                                                   |
-| ------------------------ | ---------------------------------------------------------------------- |
+| ------------------------ | ----------------------------------------------------------------------- |
 | `robot_bridge.py`        | Plain Python (no rclpy), owns `LocoClient` DDS, listens on Unix socket |
 | `cmd_pose_bridge.py`     | rclpy node, one-shot relative moves via socket                         |
 | `cmd_vel_bridge.py`      | rclpy node, `/cmd_vel` → robot_bridge at 10Hz, 0.5s deadman            |
 | `human_follower_node.py` | `/g1/selected_human` → 60cm standoff → `/g1/nav_goal`, 2Hz             |
 
-**Two-process constraint**: `LocoClient` (unitree_sdk2py) + rclpy **cannot coexist in one process** — segfaults 15/15 times. All control goes via Unix socket `/tmp/g1_robot_bridge.sock`.
+**Two-process constraint**: `LocoClient` (unitree_sdk2py) + rclpy **can't coexist one process** — segfault 15/15 times. All control go via Unix socket `/tmp/g1_robot_bridge.sock`.
 
 ### `g1_nav`
 
@@ -201,35 +201,34 @@ Navigation stack configs.
 
 ### `livox_detection`
 
-Standalone CenterPoint 3D detection from LiDAR PointCloud2.
+Standalone VoxelNeXt 3D detection from LiDAR PointCloud2.
 
-- `livox_detection/livox_detection_node.py` — subscribes `/livox/lidar`, publishes `/g1/detections/centerpoint` + `/g1/detection_markers/centerpoint`
+- `livox_detection/livox_detection_node.py` — subscribes `/livox/lidar`, publishes `/g1/detections/livox` (alias `/g1/detections/voxelnext`) + `/g1/detection_markers/livox` (alias `/g1/detection_markers/voxelnext`)
 - `launch/livox_detection.launch.py` — args: `checkpoint_path`, `score_threshold` (0.4), `device` (cuda), `max_hz` (5.0)
-- Default checkpoint: `/home/thakk100/Projects/Thesis/livox_detection/livoxdetection/livox_model_1.pt`
+- Default checkpoint: `pt/voxelnext_nuscenes.pth` (workspace root)
 
 ---
 
 ## Isaac ROS (cuVSLAM + nvblox + human segmentation) — Docker setup
 
-GPU-accelerated SLAM stack, added as a comparison alternative to `plain_slam_ros2`
-(item T4 — CPU-only, no CUDA path). Runs in its own Docker container with its
-own CUDA 13 runtime, side by side with the rest of the stack which stays on the
-host's CUDA 12.0 toolkit — **no host CUDA/driver changes**, containers cross
-into the native ROS2 Jazzy DDS graph via `--network host`.
+GPU-accelerate SLAM stack, added as comparison alt to `plain_slam_ros2`
+(item T4 — CPU-only, no CUDA path). Run own Docker container, own
+CUDA 13 runtime, side by side w/ rest of stack — stays on
+host's CUDA 12.0 toolkit — **no host CUDA/driver change**, container cross
+into native ROS2 Jazzy DDS graph via `--network host`.
 
-**Why a container:** NVIDIA's Isaac ROS apt packages hard-depend on
+**Why container:** NVIDIA's Isaac ROS apt packages hard-depend on
 `cuda-toolkit-13-0` (confirmed via `apt-get install --simulate
-ros-jazzy-isaac-ros-visual-slam` — unmet dependency against this host's CUDA
-12.0). Installing natively would break the VoxelNeXt/torch/spconv detection
-stack, which is pinned to cu121. Isolating in a container sidesteps that
-entirely.
+ros-jazzy-isaac-ros-visual-slam` — unmet dependency against host's CUDA
+12.0). Install native would break VoxelNeXt/torch/spconv detection
+stack, pinned to cu121. Isolate in container sidesteps whole thing.
 
-**Why RGBD mode, not stereo:** `g1_29dof.urdf`'s D435i is a single Gazebo
-`rgbd_camera` sensor — no `infra1`/`infra2` stereo pair exists in sim. cuVSLAM
-RGBD mode reuses the existing `/camera/color/image_raw`,
+**Why RGBD mode, not stereo:** `g1_29dof.urdf`'s D435i single Gazebo
+`rgbd_camera` sensor — no `infra1`/`infra2` stereo pair in sim. cuVSLAM
+RGBD mode reuse existing `/camera/color/image_raw`,
 `/camera/depth/image_rect_raw`, `/camera/color/camera_info` topics unmodified.
 
-### One-time host setup (already done on this machine, kept here for a fresh clone)
+### One-time host setup (already done this machine, kept here for fresh clone)
 
 ```bash
 # 1. Add the Isaac ROS apt repo (Ubuntu 24.04 "noble" x86_64)
@@ -251,32 +250,31 @@ echo 'export ISAAC_ROS_WS="${ISAAC_ROS_WS:-$HOME/Projects/thesis/g1_perception_w
 source ~/.bashrc
 ```
 
-`nvidia-container-toolkit` must also be installed and passing
-`docker run --rm --gpus all nvidia/cuda:...-base-ubuntu24.04 nvidia-smi` — was
-already present/verified on this machine.
+`nvidia-container-toolkit` must also be installed, passing
+`docker run --rm --gpus all nvidia/cuda:...-base-ubuntu24.04 nvidia-smi` — already
+present/verified this machine.
 
 ### Workspace layout
 
 `isaac_ros_ws/src/` holds 5 packages as git submodules, pointed at upstream
 `NVIDIA-ISAAC-ROS/*` (forks exist at `github.com/thdhyan/*` for all five, but
-`origin` stays on upstream — only re-pointed to the fork if we actually patch
+`origin` stays on upstream — only re-point to fork if actually patch
 one, same convention as `livox_laser_simulation_RO2`/`Ultra-Fusion`):
 
 | Submodule                      | Role                                                                                              |
-| ------------------------------ | ------------------------------------------------------------------------------------------------- |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `isaac_ros_common`             | Docker/devcontainer scaffolding consumed by `isaac-ros-cli`                                       |
 | `isaac_ros_visual_slam`        | cuVSLAM — GPU stereo/RGBD VIO                                                                     |
 | `isaac_ros_nvblox`             | GPU 3D reconstruction (mesh + ESDF) from depth + pose                                             |
 | `isaac_ros_image_segmentation` | U-Net decoder — backs PeopleSemSegNet human segmentation, masks people out of nvblox's static map |
-| `isaac_ros_nitros`             | Zero-copy GPU tensor/image transport the above depend on                                          |
+| `isaac_ros_nitros`             | Zero-copy GPU tensor/image transport above depend on                                              |
 
-The actual ROS packages (`ros-jazzy-isaac-ros-visual-slam`,
+Actual ROS packages (`ros-jazzy-isaac-ros-visual-slam`,
 `ros-jazzy-isaac-ros-nvblox`, `ros-jazzy-isaac-ros-unet`,
 `ros-jazzy-isaac-ros-peoplesemseg-models-install`, …) install as **apt debs
-inside the container** — the base `isaac_ros` container image already has the
-CUDA 13 toolkit and this same apt repo baked in. The submodules above are for
-reading launch files/params and for local patches, not for a from-source
-colcon build.
+inside container** — base `isaac_ros` container image already has
+CUDA 13 toolkit and same apt repo baked in. Submodules above for
+reading launch files/params + local patches, not from-source colcon build.
 
 ### Build / activate the container
 
@@ -286,7 +284,7 @@ isaac-ros activate --build-local --build-only   # first time: pulls/builds the i
 isaac-ros activate                               # enters the dev container
 ```
 
-Inside the container:
+Inside container:
 
 ```bash
 sudo apt-get update
@@ -297,9 +295,9 @@ sudo apt-get install -y ros-jazzy-isaac-ros-visual-slam ros-jazzy-isaac-ros-nvbl
 ### Running alongside `plain_slam_ros2`
 
 Isaac ROS publishes to **isolated frame names** (`vslam_odom`/`vslam_map`, not
-`odom`/`map`) so `slam_type:=isaac` can run _simultaneously_ with
-`slam_type:=3d` (plain_slam_ros2) for direct comparison — same TF rule
-established earlier in this project: never publish the same parent/child pair
+`odom`/`map`) so `slam_type:=isaac` can run _simultaneous_ with
+`slam_type:=3d` (plain_slam_ros2) for direct compare — same TF rule
+established earlier project: never publish same parent/child pair
 from two independent sources.
 
 ```bash
@@ -307,22 +305,22 @@ ros2 launch g1_bringup sim_teleop.launch.py slam_type:=isaac rviz:=true
 ```
 
 **VRAM note:** RTX 4060 Laptop, 8188 MiB — right at nvblox's stated minimum,
-shared with Gazebo rendering + WBC ONNX + VoxelNeXt CUDA all running natively
-alongside the containerized Isaac ROS stack. Check `nvidia-smi` with detection
-on before trusting a full concurrent run.
+shared w/ Gazebo rendering + WBC ONNX + VoxelNeXt CUDA all running native
+alongside containerized Isaac ROS stack. Check `nvidia-smi` w/ detection
+on before trust full concurrent run.
 
 ---
 
 ## Robot Sensor Launch
 
-The file `/home/unitree/Projects/ros2_ws/src/g1_sensors.launch.py` (deployed to robot) runs:
+File `/home/unitree/Projects/ros2_ws/src/g1_sensors.launch.py` (deployed to robot) runs:
 
 - Livox Mid-360 via `livox_ros_driver2_node` — PointCloud2 format, 10Hz
 - RealSense D435I via `realsense2_camera_node` — RGB + depth + PCL2 + IMU (no IR stereo)
-- `robot_state_publisher` with URDF from `/home/unitree/Projects/g1pilot/description_files/urdf/g1_29dof.urdf`
+- `robot_state_publisher` w/ URDF from `/home/unitree/Projects/g1pilot/description_files/urdf/g1_29dof.urdf`
 - 4 static TF publishers: mid360→livox_frame, base_link→pelvis, d435_link→camera_color_optical_frame, d435_link→camera_depth_optical_frame
 
-**Using the shell script instead** (`g1_start_sensors.sh`) is recommended — it staggers node startup by 4-6s each to avoid simultaneous DDS discovery memory spikes.
+**Use shell script instead** (`g1_start_sensors.sh`) recommended — staggers node startup 4-6s each, dodge simultaneous DDS discovery memory spikes.
 
 Camera streams (D435I hardware constraints):
 
@@ -331,7 +329,7 @@ Camera streams (D435I hardware constraints):
 - ✅ Aligned depth to color
 - ✅ PointCloud2 XYZRGB ~6Hz
 - ✅ IMU (gyro + accel fused, `unite_imu_method=2`)
-- ❌ IR1/IR2 disabled — 5 simultaneous USB streams exhausts ARM USB frame buffers
+- ❌ IR1/IR2 disabled — 5 simultaneous USB streams exhaust ARM USB frame buffers
 
 ---
 
@@ -339,13 +337,13 @@ Camera streams (D435I hardware constraints):
 
 ### DDS Discovery OOM on robot (CRITICAL)
 
-**Symptom**: Nodes start then get SIGKILL'd (exit code -9) seconds after launch. Memory spikes from ~2GB to 14GB during startup, then drops back after kill.
+**Symptom**: Nodes start then get SIGKILL'd (exit code -9) seconds after launch. Memory spike ~2GB → 14GB during startup, drop back after kill.
 
-**Root cause**: Robot has 280+ unitree SDK DDS entities on domain 0. Every new ROS2 participant probes participant indices 0..N, causing a VMS spike proportional to N (30GB+ VSZ). On this 15GB Jetson platform, the kernel OOM killer fires.
+**Root cause**: Robot has 280+ unitree SDK DDS entities on domain 0. Every new ROS2 participant probes participant indices 0..N, VMS spike proportional to N (30GB+ VSZ). This 15GB Jetson platform, kernel OOM killer fires.
 
 **Fix**:
 
-1. Use `g1_start_sensors.sh` (staggered startup — each node waits 4-6s for previous to finish DDS discovery)
+1. Use `g1_start_sensors.sh` (staggered startup — each node waits 4-6s for previous finish DDS discovery)
 2. Export `CYCLONEDDS_URI=/home/unitree/Projects/cyclone_sensors.xml` (caps `MaxAutoParticipantIndex=4`)
 3. Export `ROS_DOMAIN_ID=1` (isolates sensor nodes from unitree SDK on domain 0)
 4. **Laptop must also use `ROS_DOMAIN_ID=1`** to see robot sensor topics
@@ -354,21 +352,21 @@ Camera streams (D435I hardware constraints):
 
 **Symptom**: `realsense2_camera_node` killed after ~10s. Log: `iio_hid_sensor: Frames didn't arrived`
 
-**Fix**: Camera IMU (HID) disabled. Use `enable_gyro:=false enable_accel:=false`. The D435I on this robot hardware (likely Jetson Orin) has a known `iio_hid_sensor` deadlock. Note: `unite_imu_method` must be integer (0/1/2), not string.
+**Fix**: Camera IMU (HID) disabled. Use `enable_gyro:=false enable_accel:=false`. D435I on this robot hardware (likely Jetson Orin) has known `iio_hid_sensor` deadlock. Note: `unite_imu_method` must be integer (0/1/2), not string.
 
-**Update**: Re-enabled with `enable_gyro:=true enable_accel:=true unite_imu_method:=2` — monitor for deadlock.
+**Update**: Re-enabled w/ `enable_gyro:=true enable_accel:=true unite_imu_method:=2` — monitor for deadlock.
 
 ### Camera USB frame exhaustion
 
 **Symptom**: `Out of frame resources` error, camera dies.
 
-**Cause**: 5 simultaneous streams (IR1+IR2+depth+color+align) exceeds USB frame buffer capacity on ARM.
+**Cause**: 5 simultaneous streams (IR1+IR2+depth+color+align) exceed USB frame buffer capacity on ARM.
 
 **Fix**: Disable IR stereo (`enable_infra1:=false enable_infra2:=false`). Max 4 streams (RGB + depth + aligned + PCL2).
 
 ### Camera `Device or resource busy` (VIDIOC_S_FMT)
 
-**Symptom**: Camera fails to open immediately after a crash or restart.
+**Symptom**: Camera fail open right after crash or restart.
 
 **Fix**: USB power-cycle:
 
@@ -380,17 +378,17 @@ echo '123' | sudo -S bash -c "echo '2-3' > /sys/bus/usb/drivers/usb/unbind && sl
 
 **Symptom**: RViz error "Could not transform from camera_color_optical_frame to pelvis".
 
-**Fix**: Static TF `d435_link → camera_color_optical_frame` with optical-frame rotation `(roll=-1.5708, yaw=-1.5708)`. Already in `g1_sensors.launch.py` and `g1_start_sensors.sh`. RSP chains `d435_link → torso_link → ... → pelvis` via URDF.
+**Fix**: Static TF `d435_link → camera_color_optical_frame` w/ optical-frame rotation `(roll=-1.5708, yaw=-1.5708)`. Already in `g1_sensors.launch.py` and `g1_start_sensors.sh`. RSP chains `d435_link → torso_link → ... → pelvis` via URDF.
 
 ### SSH drops when killing processes
 
 **Symptom**: `pkill -f` kills SSH session. `kill` also drops if PID chain matches.
 
-**Fix**: Use targeted PIDs: `kill $(pgrep -f realsense2_camera_node)` (not `pkill -f`). Run each kill in a separate SSH command.
+**Fix**: Use targeted PIDs: `kill $(pgrep -f realsense2_camera_node)` (not `pkill -f`). Run each kill separate SSH command.
 
 ### `bad_alloc` spam in logs
 
-Not real OOM — it's DDS discovery buffer allocation failures from the 280+ entity flood. Cosmetic. Nodes survive past the spam if staggered properly.
+Not real OOM — it's DDS discovery buffer allocation failures from 280+ entity flood. Cosmetic. Nodes survive past spam if staggered proper.
 
 ### `unite_imu_method` parameter type error
 
@@ -401,12 +399,12 @@ Not real OOM — it's DDS discovery buffer allocation failures from the 280+ ent
 ## DDS / Domain Setup
 
 | Component                          | Domain | CycloneDDS URI                               |
-| ---------------------------------- | ------ | -------------------------------------------- |
+| ----------------------------------- | ------ | --------------------------------------------- |
 | Unitree SDK (robot permanent)      | 0      | `/home/unitree/cyclonedds_ws/cyclonedds.xml` |
 | Sensor nodes (g1_start_sensors.sh) | 1      | `/home/unitree/Projects/cyclone_sensors.xml` |
 | Laptop (perception/nav)            | 1      | default (Jazzy)                              |
 
-Set on laptop before running any ros2 commands:
+Set on laptop before run any ros2 commands:
 
 ```bash
 export ROS_DOMAIN_ID=1
@@ -443,7 +441,7 @@ map
    (rclpy node)                                                       (no rclpy, owns LocoClient)
 ```
 
-**rclpy + LocoClient in one process = segfault 100% of the time.** Architecture enforces isolation.
+**rclpy + LocoClient one process = segfault 100% time.** Architecture enforce isolation.
 
 ### Running robot control
 
@@ -466,15 +464,15 @@ ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
 ## Topic Table (full stack)
 
 | Topic                               | Type             | Publisher                 | Subscriber      |
-| ----------------------------------- | ---------------- | ------------------------- | --------------- |
+| ------------------------------------- | ----------------- | -------------------------- | ----------------- |
 | `/livox/lidar`                      | PointCloud2      | livox_ros_driver2 (robot) | livox_detection |
 | `/livox/imu`                        | Imu              | livox_ros_driver2 (robot) | slam_toolbox    |
 | `/camera/color/image_raw`           | Image            | realsense2_camera (robot) | RViz, ccvnorm   |
 | `/camera/depth/image_rect_raw`      | Image            | realsense2_camera (robot) | ccvnorm         |
 | `/camera/depth/color/points`        | PointCloud2      | realsense2_camera (robot) | Nav2 costmap    |
 | `/camera/imu`                       | Imu              | realsense2_camera (robot) | –               |
-| `/g1/detections/centerpoint`        | Detection3DArray | livox_detection_node      | human_selector  |
-| `/g1/detection_markers/centerpoint` | MarkerArray      | livox_detection_node      | RViz            |
+| `/g1/detections/livox`              | Detection3DArray | livox_detection_node      | human_selector  |
+| `/g1/detection_markers/livox`       | MarkerArray      | livox_detection_node      | RViz            |
 | `/g1/selected_human`                | Detection3D      | human_selector_node       | human_follower  |
 | `/g1/nav_goal`                      | PoseStamped      | human_follower_node       | Nav2            |
 | `/cmd_vel`                          | Twist            | Nav2 DWB controller       | cmd_vel_bridge  |
@@ -485,7 +483,7 @@ ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
 
 - [x] **T1** `g1_description` — URDF + RSP + TFs + RViz config
 - [x] **T2** `g1_bringup` — real.launch, sim.launch, full_real.launch
-- [x] **T3** `livox_detection` — CenterPoint node, launch file
+- [x] **T3** `livox_detection` — VoxelNeXt node, launch file
 - [x] **T4** `g1_nav` — SLAM Toolbox + Nav2 params
 - [x] **T5** `g1_control` — robot_bridge, cmd_vel_bridge, human_follower
 - [x] **T6** `full_real.launch.py` — all packages wired
@@ -500,31 +498,27 @@ Sensor nodes on robot get SIGKILL'd by OOM killer during DDS discovery surge fro
 - `ROS_DOMAIN_ID=1` — isolates from domain-0 unitree entities
 - `MaxAutoParticipantIndex=4` in `cyclone_sensors.xml`
 
-Status: `/livox/lidar` + `/tf_static` confirmed working. Camera node starts but may be killed before finishing stream init. Investigating further.
+Status: `/livox/lidar` + `/tf_static` confirmed working. Camera node starts but maybe killed before finish stream init. Investigating further.
 
 ---
 
 ## Original Perception Pipeline
 
-The original `g1_perception` package (lidar_bridge, ccvnorm, centerpoint, pointpillar) is preserved. See the bottom of this file for its full documentation.
+Original `g1_perception` package (lidar_bridge, ccvnorm) preserved. See bottom of file for full docs.
 
 <details>
 <summary>Original g1_perception docs</summary>
 
 ### lidar_bridge
 
-Normalizes sim/real LiDAR → `/livox/mid360/points`. Passthrough on sim; re-frames `/utlidar/cloud` (Foxy frame_id) on real.
+Normalize sim/real LiDAR → `/livox/mid360/points`. Passthrough on sim; re-frame `/utlidar/cloud` (Foxy frame_id) on real.
 
 ### ccvnorm_node
 
 Fuses LiDAR + D435 RGB-D depth. Two modes:
 
 1. `ccvnorm_pseudo_stereo` — confidence-weighted merge, no GPU
-2. `ccvnorm_network` — stereo GCNetLiDAR model, requires fine-tuning
-
-### centerpoint_node / pointpillar_node
-
-Both subscribe `/livox/mid360/points`, publish `Detection3DArray` + `MarkerArray`. CenterPoint uses ported `livox_model_1.pt` weights.
+2. `ccvnorm_network` — stereo GCNetLiDAR model, needs fine-tune
 
 </details>
 
@@ -532,7 +526,7 @@ Both subscribe `/livox/mid360/points`, publish `Detection3DArray` + `MarkerArray
 
 ## Locomotion Control Reference
 
-See the locomotion section for full two-process constraint explanation, environment setup, FSM IDs, and diagnostics.
+See locomotion section for full two-process constraint explanation, env setup, FSM IDs, diagnostics.
 
 ```bash
 # Confirmed FSM IDs for this robot/firmware:

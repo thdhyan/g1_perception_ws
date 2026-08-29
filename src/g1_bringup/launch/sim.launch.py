@@ -11,7 +11,7 @@ Launches:
                 odom->pelvis (fallback),
                 d435_link->camera_color_optical_frame,
                 d435_link->camera_depth_optical_frame
-  - CenterPoint 3D human detection (PointCloud2 input from /livox/mid360/points)
+  - VoxelNeXt 3D human detection (PointCloud2 input from /livox/mid360/points)
   - RViz2 (optional)
 
 Sensors simulated via Gazebo Harmonic built-in sensor types:
@@ -20,7 +20,7 @@ Sensors simulated via Gazebo Harmonic built-in sensor types:
   - depth_camera -> /camera/depth_image -> /camera/depth/image_rect_raw
 
 No external sensor driver repos needed (no livox_ros_driver2, no realsense2_camera).
-Detection uses centerpoint_node (PointCloud2) instead of livox_detection_node (CustomMsg).
+Detection uses livox_detection_node (VoxelNeXt, livox_detection package).
 """
 
 import os
@@ -35,16 +35,11 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
-# Absolute checkpoint path (relative fallback handled by centerpoint_node itself)
+# VoxelNeXt checkpoint (OpenPCDet format, .pth) — only supported backend
 CHECKPOINT_PATH = str(
-    Path.home() / "Projects/thesis/G1_sim/detection/pt/livox_model_1.pt"
+    Path.home() / "Projects/thesis/g1_perception_ws/pt/voxelnext_nuscenes.pth"
 )
-# VoxelNeXt uses its own nuScenes checkpoint (OpenPCDet format, not the
-# CenterPoint/PointPillar one above) -- livox_detection_node.py's own default
-# for checkpoint_path is CenterPoint/PointPillar-only and doesn't apply here.
-VOXELNEXT_CHECKPOINT_PATH = str(
-    Path(__file__).resolve().parents[3] / "pt" / "voxelnext_nuscenes.pth"
-)
+VOXELNEXT_CHECKPOINT_PATH = CHECKPOINT_PATH
 
 
 def preprocess_urdf(context, *args, **kwargs):
@@ -357,8 +352,8 @@ def launch_setup(context, *args, **kwargs):
         )
     )
 
-    # ── PointPillars / CenterPoint 3D Human Detection (livox_detection) ───────
-    detection_algo = context.launch_configurations.get("detection_algorithm", "pointpillar")
+    # ── VoxelNeXt 3D Human Detection (livox_detection) ─────────────────────────
+    detection_algo = context.launch_configurations.get("detection_algorithm", "voxelnext")
     if detection == "true":
         nodes.append(
             Node(
@@ -368,7 +363,7 @@ def launch_setup(context, *args, **kwargs):
                 output="screen",
                 parameters=[{
                     "algorithm": detection_algo,
-                    "checkpoint_path": VOXELNEXT_CHECKPOINT_PATH if detection_algo == "voxelnext" else checkpoint,
+                    "checkpoint_path": checkpoint,
                     "device": device,
                     "input_topic": "/livox/mid360/points",
                     "target_frame": "pelvis",
@@ -586,7 +581,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "detection_algorithm",
             default_value="voxelnext",
-            description="3D human detection algorithm ('voxelnext', 'pointpillar', or 'centerpoint')",
+            description="3D human detection algorithm (only 'voxelnext' is supported)",
         ),
         DeclareLaunchArgument(
             "slam",
@@ -606,7 +601,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "checkpoint_path",
             default_value=CHECKPOINT_PATH,
-            description="CenterPoint checkpoint path",
+            description="VoxelNeXt checkpoint path (.pth)",
         ),
         DeclareLaunchArgument(
             "device",

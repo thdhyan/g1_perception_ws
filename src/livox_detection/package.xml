@@ -4,7 +4,7 @@
   <name>livox_detection</name>
   <version>0.1.0</version>
   <description>
-    Livox LiDAR 3D object detection using CenterPoint inference.
+    Livox LiDAR 3D object detection using VoxelNeXt inference.
     Reads livox_ros_driver2 CustomMsg, runs detection, and publishes
     Detection3DArray and visualization markers.
   </description>

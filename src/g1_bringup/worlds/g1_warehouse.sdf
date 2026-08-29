@@ -305,7 +305,7 @@
       Moving pedestrian actor (Gazebo Harmonic actor system, see
       https://gazebosim.org/docs/harmonic/actors/). Unlike human_1..human_5
       above (static primitive-geometry models), this one actually walks, so
-      detection nodes (livox_detection VoxelNeXt/PointPillar/CenterPoint) have
+      detection nodes (livox_detection VoxelNeXt) have
       a moving target to track instead of only static boxes. Path: X=-3,
       Y oscillating -4 <-> 4 (8m, clear of shelf_1/shelf_2 at Y=5 and
       human_1..3 at X=3..4), ~1.2 m/s walking pace, loops forever.

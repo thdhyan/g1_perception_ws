@@ -52,9 +52,9 @@ it. Measured offline against a captured 10-sweep cloud, with the ground at
 
 **The workspace root was computed as `parents[4]`,** which under
 `--symlink-install` resolves through `src/` and lands on `~/Projects/thesis`.
-`pcdet` then failed to import and the node fell back to PointPillar clustering
-with only a warning — a run that looks alive but is not running the model asked
-for. Both real-robot launches now walk up to the directory containing
+`pcdet` then failed to import and the node fell back to a generic clustering
+heuristic with only a warning — a run that looks alive but is not running the
+model asked for. Both real-robot launches now walk up to the directory containing
 `VoxelNeXt`.
 
 **`cmd_vel_bridge` could never have worked.** It sent

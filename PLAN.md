@@ -13,7 +13,7 @@
 |---|---|---|
 | `g1_description` | ament_python | URDF + robot_state_publisher + static TFs + RViz config |
 | `g1_bringup` | ament_python | Launch hub — real/sim/full-stack with one command |
-| `livox_detection` | ament_python | Standalone detection node using `livox_model_1.pt` |
+| `livox_detection` | ament_python | Standalone VoxelNeXt detection node using `pt/voxelnext_nuscenes.pth` |
 | `g1_nav` | ament_python | SLAM Toolbox + Nav2 launches + G1-tuned params |
 | `g1_control` | ament_python | Locomotion bridge + 2 new nodes (see below) |
 
@@ -30,7 +30,7 @@ SENSORS
   LowState DDS        → lowstate_to_jointstate            → robot_state_publisher → /tf
 
 DETECTION
-  livox_detection_node → /g1/detections/centerpoint       → human_selector_node
+  livox_detection_node → /g1/detections/livox              → human_selector_node
 
 SELECTION
   human_selector_node  → /g1/selected_human (PoseStamped) → human_follower_node
@@ -57,7 +57,7 @@ ODOMETRY
 - `launch/description.launch.py` — robot_state_publisher + static TFs:
   - `mid360_link` ↔ `livox_frame` (180° yaw)
   - `base_link` ↔ `pelvis` (identity)
-- `config/g1_viz.rviz` — RobotModel + PointCloud2 (`/livox/mid360/points`) + MarkerArray (`/g1/detection_markers/centerpoint`)
+- `config/g1_viz.rviz` — RobotModel + PointCloud2 (`/livox/mid360/points`) + MarkerArray (`/g1/detection_markers/livox`)
 
 **Verify:** `ros2 launch g1_description description.launch.py` → robot skeleton visible in RViz
 
@@ -81,12 +81,12 @@ ODOMETRY
 - Extract `livox_detection_node.py` from `g1_perception` (or symlink)
 - `setup.py` entry point: `livox_detection_node`
 - `launch/livox_detection.launch.py` with args:
-  - `checkpoint` (default: `/home/thakk100/Projects/Thesis/livox_detection/livoxdetection/livox_model_1.pt`)
+  - `checkpoint` (default: `pt/voxelnext_nuscenes.pth` at workspace root)
   - `score_threshold` (default: 0.4)
   - `device` (default: cuda)
   - `input_topic` (default: `/livox/lidar`)
 
-**Publishes:** `/g1/detections/centerpoint` (Detection3DArray) + `/g1/detection_markers/centerpoint` (MarkerArray)
+**Publishes:** `/g1/detections/livox` (Detection3DArray) + `/g1/detection_markers/livox` (MarkerArray)
 
 ---
 
@@ -146,7 +146,7 @@ ros2 launch g1_bringup full_real.launch.py \
   slam:=true \
   map:=/path/to/map.yaml \
   device:=cuda \
-  checkpoint:=/home/thakk100/Projects/Thesis/livox_detection/livoxdetection/livox_model_1.pt
+  checkpoint:=$PWD/pt/voxelnext_nuscenes.pth
 ```
 
 Includes (in order):
@@ -173,7 +173,7 @@ Includes (in order):
 | `/joint_states` | `sensor_msgs/JointState` | lowstate_to_jointstate | All 29 DoF from DDS |
 | `/tf`, `/tf_static` | `tf2_msgs/TFMessage` | robot_state_publisher | Robot skeleton |
 | `/unitree/slam_mapping/odom` | `nav_msgs/Odometry` | robot onboard | 10.8 Hz confirmed |
-| `/g1/detections/centerpoint` | `vision_msgs/Detection3DArray` | livox_detection_node | Multi-class, filter class_id=1 (pedestrian) |
+| `/g1/detections/livox` | `vision_msgs/Detection3DArray` | livox_detection_node | Multi-class, filter class_id=1 (pedestrian) |
 | `/g1/selected_human` | `geometry_msgs/PoseStamped` | human_selector_node | CLI-selected target |
 | `/g1/nav_goal` | `geometry_msgs/PoseStamped` | human_follower_node | 60 cm standoff → Nav2 |
 | `/cmd_vel` | `geometry_msgs/Twist` | Nav2 DWB | → cmd_vel_bridge → robot_bridge |
@@ -192,7 +192,7 @@ Nav2 emits continuous `/cmd_vel`. `robot_bridge.py` protocol uses blocking point
 `/unitree/slam_mapping/odom` (onboard) is primary. `lidar_odometry_node` (ICP) runs parallel for comparison. Do not switch primary source until ICP is validated on actual hardware.
 
 ### Human detection class filter
-CenterPoint (livox_detection) outputs KITTI classes: 0=car, 1=pedestrian, 2=cyclist. Filter `class_id == 1` in `human_selector_node`. Score threshold 0.3 (already set) — Mid-360 sparse scan yields lower confidence than dense LiDAR.
+VoxelNeXt (livox_detection) outputs multi-class detections (nuScenes classes). Filter by the `pedestrian` class in `human_selector_node`. Score threshold 0.3 (already set) — Mid-360 sparse scan yields lower confidence than dense LiDAR.
 
 ### LiDAR → Nav2 costmap
 Nav2 supports PointCloud2 observation sources natively. No LaserScan conversion needed. Point `/livox/mid360/points` directly at the costmap observation layer.
@@ -279,7 +279,7 @@ source install/setup.bash
 ros2 launch g1_bringup full_real.launch.py \
   slam:=true \
   device:=cuda \
-  checkpoint:=/home/thakk100/Projects/Thesis/livox_detection/livoxdetection/livox_model_1.pt
+  checkpoint:=$PWD/pt/voxelnext_nuscenes.pth
 
 # Terminal 3 — (optional) select human via CLI
 # human_selector_node already launched by full_real.launch.py
@@ -297,7 +297,7 @@ ros2 launch g1_bringup full_real.launch.py \
 - [ ] Step 5: `g1_control` package — `cmd_vel_bridge.py` + `human_follower_node.py`
 - [ ] Step 6: `g1_bringup/full_real.launch.py` — wires everything together
 - [ ] Verify: robot visible in RViz with live TF from lowstate
-- [ ] Verify: detections appear on `/g1/detections/centerpoint` at >3 Hz
+- [ ] Verify: detections appear on `/g1/detections/livox` at >3 Hz
 - [ ] Verify: human_selector CLI works, `/g1/selected_human` publishes
 - [ ] Verify: `human_follower_node` produces valid `/g1/nav_goal`
 - [ ] Verify: Nav2 accepts goal and robot walks to standoff position

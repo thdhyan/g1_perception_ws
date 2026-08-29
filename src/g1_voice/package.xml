@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypemirror="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>g1_voice</name>
+  <version>0.1.0</version>
+  <description>
+    G1 voice interaction: audio_backend (standalone Unix socket RPC to the G1
+    VUI/AudioClient service and its rt/audio_msg ASR stream), audio_bridge_node
+    (ROS 2 topics for TTS, PCM playback, volume, LED, ASR), mic_node (raw 16 kHz
+    microphone multicast stream with RMS utterance segmentation), and dialog_node
+    (Ollama or OpenAI reply generation feeding the onboard TTS).
+  </description>
+  <maintainer email="th.dhyan.us@gmail.com">thakk100</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-requests</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

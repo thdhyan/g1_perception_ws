@@ -51,7 +51,7 @@ nav_goal_node:
   #   '{header: {frame_id: "map"}, pose: {position: {x: 1.0, y: 2.0, z: 0.0}, orientation: {w: 1.0}}}'
 
 human_selector_node:
-  detection_topic: "/g1/detections/centerpoint"
+  detection_topic: "/g1/detections/livox"
   min_score: 0.3
   redetect_cooldown_sec: 3.0
 

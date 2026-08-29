@@ -88,6 +88,17 @@ def generate_launch_description():
             'base_frame': 'pelvis',
             'map_frame': 'vslam_map',
             'odom_frame': 'vslam_odom',
+            # cuVSLAM must NOT broadcast vslam_odom -> pelvis: the sim already
+            # publishes odom -> pelvis (startup identity static, later the LIO
+            # node), and a second parent for 'pelvis' is a genuine TF conflict --
+            # this is the "double TF" seen 2026-08-18. cuVSLAM still needs
+            # base_frame to know the camera extrinsics, it just stops claiming
+            # the frame. Its own vslam_map -> vslam_odom stays published (nothing
+            # else owns vslam_odom), and isaac_slam.launch.py adds a single
+            # identity map -> vslam_map static so the output is viewable in the
+            # sim's RViz without either tree claiming the other's frames.
+            'publish_odom_to_base_tf': False,
+            'publish_map_to_odom_tf': True,
             'enable_slam_visualization': True,
             'enable_landmarks_view': True,
             'enable_observations_view': True,

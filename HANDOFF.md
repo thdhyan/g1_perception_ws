@@ -1,5 +1,11 @@
 # HANDOFF: G1 Sim Data Collection — SLAM, TF, Detection
 
+> **Other active workstreams:**
+> - Isaac ROS / onboard Orin NX → [HANDOFF_ISAAC_ROS_ROBOT.md](HANDOFF_ISAAC_ROS_ROBOT.md) + [ISAAC_ROS_ON_ROBOT.md](ISAAC_ROS_ON_ROBOT.md)
+> - **Person ReID (VoxelKP embed head, LUT, contrastive training)** → [HANDOFF_REID.md](HANDOFF_REID.md)
+>
+> This document covers sim / laptop-side SLAM+detection only.
+
 **Date:** 2026-08-16/17, updated 2026-08-17 (second session) and 2026-08-18
 (third session). **Repo:** `g1_perception_ws` on `main`, all three sessions'
 work now committed. The Isaac ROS stack **builds and runs end-to-end**, but
@@ -61,8 +67,8 @@ narrative already written up in [`sim_workflow/README.md`](sim_workflow/README.m
    consumed by any node yet (no VIO in the stack until cuVSLAM lands) — the
    D435i one is exactly what cuVSLAM will eventually want.
 6. **VoxelNeXt detector fixed and verified.** Was silently falling back to
-   a PointPillar clustering heuristic — launch files passed it the
-   CenterPoint/PointPillar checkpoint regardless of algorithm, so
+   a generic clustering heuristic — launch files passed it the wrong
+   checkpoint regardless of algorithm, so
    `load_params_from_file()` threw and got swallowed. Fixed
    (`VOXELNEXT_CHECKPOINT_PATH`). Verified against a live headless sim run:
    real per-frame varying scores/counts. Added `class_filter` (default

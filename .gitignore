@@ -36,3 +36,7 @@ scratch/
 pt/*.pth
 pt/*.pt
 
+
+# External/data dirs (not part of this repo)
+VoxelKP/
+reid_data/

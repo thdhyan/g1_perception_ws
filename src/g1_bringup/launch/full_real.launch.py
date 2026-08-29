@@ -18,6 +18,7 @@ detections arrive — type the number and Enter to select a target human.
 The robot then walks to 60 cm in front of the selected human.
 """
 
+import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition, UnlessCondition
@@ -57,8 +58,8 @@ def generate_launch_description():
 
     checkpoint_arg = DeclareLaunchArgument(
         "checkpoint",
-        default_value="/home/thakk100/Projects/Thesis/livox_detection/livoxdetection/livox_model_1.pt",
-        description="Path to CenterPoint checkpoint",
+        default_value=os.path.expanduser("~/Projects/thesis/g1_perception_ws/pt/voxelnext_nuscenes.pth"),
+        description="Path to VoxelNeXt checkpoint",
     )
 
     score_threshold_arg = DeclareLaunchArgument(
@@ -163,7 +164,7 @@ def generate_launch_description():
         name="g1_human_selector",
         output="screen",
         parameters=[
-            {"detection_topic": "/g1/detections/centerpoint"},
+            {"detection_topic": "/g1/detections/livox"},
             {"min_score": 0.3},
         ],
     )

@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypemirror="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>g1_livox_pose</name>
+  <version>0.1.0</version>
+  <description>
+    3D human pose estimation from Livox LiDAR point clouds for the G1
+    perception stack. Consumes a snapshot cloud + Detection3DArray, runs a
+    pluggable pose backend (debug / DAPT / VoxelKP), and assembles
+    time-continuous per-person skeleton sequences in a stable reference
+    frame for logging and future skeleton-token transformer training.
+  </description>
+  <maintainer email="th.dhyan.us@gmail.com">thakk100</maintainer>
+  <license>MIT</license>
+
+  <depend>rclpy</depend>
+  <depend>g1_livox_pose_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>vision_msgs</depend>
+  <depend>visualization_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>builtin_interfaces</depend>
+  <depend>tf2_ros</depend>
+  <depend>sensor_msgs_py</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

@@ -5,8 +5,8 @@
   <version>0.1.0</version>
   <description>
     Bridges Unitree G1 LiDAR topics (sim or real robot) onto /livox/mid360/points,
-    runs the G1_sim CenterPoint detection pipeline against them, and fuses
-    LiDAR + D435 RGB-D via CCVNorm-based depth completion for mapping.
+    runs the VoxelNeXt detection pipeline (livox_detection package) against them,
+    and fuses LiDAR + D435 RGB-D via CCVNorm-based depth completion for mapping.
   </description>
   <maintainer email="th.dhyan.us@gmail.com">thakk100</maintainer>
   <license>MIT</license>

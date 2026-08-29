@@ -72,7 +72,7 @@ the sim should be restarted if its state wedges (`pkill -9 -f g1_warehouse_sim`)
 ## Arguments
 
 `wbc:=true|false`, `detection:=true|false`,
-`detection_algorithm:=voxelnext|centerpoint|pointpillar`,
+`detection_algorithm:=voxelnext`,
 `teleop:=false`, `rviz:=false`, `checkpoint_path:=…`.
 
 ## Gotchas carried over

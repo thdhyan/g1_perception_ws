@@ -18,7 +18,7 @@ echo "=== [2/4] Creating virtual environment (.venv) ==="
 # System site packages allows ROS2 jazzy python modules to be accessible
 uv venv --python 3.12 --system-site-packages .venv
 
-echo "=== [3/4] Installing PyTorch (cu121), SpConv, ONNX, and PointPillars dependencies ==="
+echo "=== [3/4] Installing PyTorch (cu121), SpConv, ONNX, and VoxelNeXt dependencies ==="
 source .venv/bin/activate
 
 uv pip install \

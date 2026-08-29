@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ROS 2 Node: Livox LiDAR -> 3D Object & Human Detection in Pelvis Frame.
 
-Supports CenterPoint and PointPillars backends (OpenPCDet architecture).
+VoxelNeXt backend (OpenPCDet architecture).
 Subscribes to `/livox/lidar` (supports PointCloud2 and Livox CustomMsg).
 Transforms detected 3D bounding boxes and coordinates into the robot's `pelvis` frame using TF2.
 """
@@ -38,9 +38,7 @@ from vision_msgs.msg import (
 )
 from visualization_msgs.msg import Marker, MarkerArray
 
-from .centerpoint_model import CenterPointBackend, CLASS_NAMES, CLASS_COLORS
-from .pointpillar_model import PointPillarBackend
-from .voxelnext_model import VoxelNeXtBackend
+from .voxelnext_model import CLASS_COLORS, CLASS_NAMES, VoxelNeXtBackend
 
 
 def yaw_to_quaternion(yaw: float) -> tuple[float, float, float, float]:
@@ -64,7 +62,7 @@ class LivoxDetectionNode(Node):
         super().__init__("g1_livox_detection")
 
         # Declare parameters
-        self.declare_parameter("algorithm", "centerpoint")  # "centerpoint", "pointpillar", or "voxelnext"
+        self.declare_parameter("algorithm", "voxelnext")  # "voxelnext" — only supported backend
         # VoxelNeXt-specific parameters
         _ws_root_str = str(Path(__file__).resolve().parents[3])
         self.declare_parameter(
@@ -74,7 +72,7 @@ class LivoxDetectionNode(Node):
         self.declare_parameter("voxelnext_dir", str(Path(_ws_root_str) / "VoxelNeXt"))
         self.declare_parameter(
             "checkpoint_path",
-            "/home/thakk100/Projects/Thesis/livox_detection/pt/livox_model_1.pt",
+            str(Path(_ws_root_str) / "pt" / "voxelnext_nuscenes.pth"),
         )
         self.declare_parameter("max_hz", 10.0)
         self.declare_parameter("score_threshold", 0.10)
@@ -89,6 +87,11 @@ class LivoxDetectionNode(Node):
         self.declare_parameter("class_filter", "pedestrian")
 
         self.algorithm = self.get_parameter("algorithm").value.lower()
+        if self.algorithm != "voxelnext":
+            self.get_logger().warning(
+                f"algorithm '{self.algorithm}' is no longer supported; using 'voxelnext'."
+            )
+            self.algorithm = "voxelnext"
         self.checkpoint_path = self.get_parameter("checkpoint_path").value
         self.max_hz = float(self.get_parameter("max_hz").value)
         self.score_threshold = float(self.get_parameter("score_threshold").value)
@@ -141,17 +144,11 @@ class LivoxDetectionNode(Node):
         self.detection_pub_alias = self.create_publisher(
             Detection3DArray, f"/g1/detections/{self.algorithm}", 10
         )
-        self.detection_pub_cp = self.create_publisher(
-            Detection3DArray, "/g1/detections/centerpoint", 10
-        )
         self.marker_pub = self.create_publisher(
             MarkerArray, "/g1/detection_markers/livox", 10
         )
         self.marker_pub_alias = self.create_publisher(
             MarkerArray, f"/g1/detection_markers/{self.algorithm}", 10
-        )
-        self.marker_pub_cp = self.create_publisher(
-            MarkerArray, "/g1/detection_markers/centerpoint", 10
         )
         self.cloud_pub = self.create_publisher(
             PointCloud2, "/livox/mid360/points", 10
@@ -179,41 +176,24 @@ class LivoxDetectionNode(Node):
         )
 
     def _init_backend(self) -> None:
-        """Initialize CenterPoint, PointPillar, or VoxelNeXt backend."""
+        """Initialize the VoxelNeXt detection backend (OpenPCDet)."""
         try:
-            if self.algorithm == "pointpillar":
-                # PointPillars uses Euclidean clustering fallback since we use CenterPoint weights for CenterPoint
-                self.backend = PointPillarBackend(
-                    checkpoint="",
-                    device=self.device,
-                    score_threshold=self.score_threshold,
-                )
-            elif self.algorithm == "voxelnext":
-                self.backend = VoxelNeXtBackend(
-                    checkpoint=self.checkpoint_path,
-                    device=self.device,
-                    score_threshold=self.score_threshold,
-                    offset_ground=self.offset_ground,
-                    cfg_file=self.voxelnext_cfg,
-                    voxelnext_dir=self.voxelnext_dir,
-                )
-            else:
-                self.backend = CenterPointBackend(
-                    checkpoint=self.checkpoint_path,
-                    device=self.device,
-                    score_threshold=self.score_threshold,
-                    offset_ground=self.offset_ground,
-                )
-            self.backend.load()
-            self.get_logger().info(f"Loaded backend: {self.algorithm}")
-        except Exception as e:
-            self.get_logger().warning(f"Backend init warning: {e}. Using PointPillar clustering fallback.")
-            self.backend = PointPillarBackend(
-                checkpoint="",
+            self.backend = VoxelNeXtBackend(
+                checkpoint=self.checkpoint_path,
                 device=self.device,
                 score_threshold=self.score_threshold,
+                offset_ground=self.offset_ground,
+                cfg_file=self.voxelnext_cfg,
+                voxelnext_dir=self.voxelnext_dir,
             )
             self.backend.load()
+            self.get_logger().info("Loaded backend: voxelnext")
+        except Exception as e:
+            self.backend = None
+            self.get_logger().error(
+                f"VoxelNeXt backend unavailable ({e}). Detection disabled — "
+                f"build pcdet from VoxelNeXt/ (python setup.py develop) and install spconv-cu121."
+            )
 
 
     def on_pointcloud2(self, msg: PointCloud2) -> None:
@@ -316,13 +296,11 @@ class LivoxDetectionNode(Node):
         det_array = self.to_detection_array(transformed_boxes, scores, labels, stamp, output_frame)
         self.detection_pub.publish(det_array)
         self.detection_pub_alias.publish(det_array)
-        self.detection_pub_cp.publish(det_array)
 
         # Publish visual markers in target_frame (pelvis)
         markers = self.to_markers(transformed_boxes, scores, labels, stamp, output_frame)
         self.marker_pub.publish(markers)
         self.marker_pub_alias.publish(markers)
-        self.marker_pub_cp.publish(markers)
 
 
     def _transform_boxes_to_target(

@@ -6,7 +6,7 @@ When streaming inference directly on continuous live Livox LiDAR streams, point 
 
 The **2-Pass Snapshot Pipeline** decouples continuous streaming from detection:
 1. **Pass 1 (Point Cloud Accumulation)**: Gathers $N$ frames (e.g. 10 frames) or $T$ seconds (e.g. 2.0s) of raw Livox LiDAR data into a single dense, high-resolution point cloud and latches it to `/livox/collected_points` with **Transient Local (Latched) QoS**.
-2. **Pass 2 (Single-Pass 3D Detection & Ranking)**: Executes CenterPoint / PointPillars 3D detection **once** on the accumulated dense cloud, transforms all bounding boxes into the robot's `pelvis` frame, and ranks detected humans by distance (#1 closest, #2 next).
+2. **Pass 2 (Single-Pass 3D Detection & Ranking)**: Executes VoxelNeXt 3D detection **once** on the accumulated dense cloud, transforms all bounding boxes into the robot's `pelvis` frame, and ranks detected humans by distance (#1 closest, #2 next).
 3. **Stable Interactive CLI Selection**: Displays a non-flickering static CLI menu in the terminal. The operator can choose a target human (e.g., `1`, `2`) or press `R` to capture a fresh 2-second snapshot.
 4. **Locomotion Walk-Up**: Computes an approach waypoint stopping **60 cm in front of the selected human** and commands the robot via `/g1/cmd_pose` or direct socket RPC to `robot_bridge.py`.
 5. **Post-Walkup Greeting**: Upon reaching the 60 cm standoff, triggers arm gestures (**shake hands** or **low wave / face wave**) before releasing arms to neutral.
@@ -30,7 +30,7 @@ The **2-Pass Snapshot Pipeline** decouples continuous streaming from detection:
                                               │
                                               ▼
                                    [ PASS 2: INFERENCE ]
-                             CenterPoint / PointPillars (ONCE)
+                                       VoxelNeXt (ONCE)
                                               │
                    Transforms boxes to 'pelvis' & ranks by distance
                                               │
@@ -126,7 +126,7 @@ ros2 launch g1_arm_control snapshot_follow_and_greet.launch.py publish_tf:=true
    =======================================================
     [●] PASS 2: RUNNING 3D DETECTION ON DENSE POINT CLOUD
         Total Accumulated Points: 28,600 across 10 frames
-        Model Backend: CENTERPOINT | Target Frame: 'pelvis'
+        Model Backend: VOXELNEXT | Target Frame: 'pelvis'
    =======================================================
     [✓] Published dense cloud to topic '/livox/collected_points' (Latched)
     [✓] Detection finished in 142.3ms. Found 2 human(s).

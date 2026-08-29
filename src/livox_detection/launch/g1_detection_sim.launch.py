@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch CenterPoint 3D Human Detection for G1 Simulation."""
+"""Launch VoxelNeXt 3D Human Detection for G1 Simulation."""
 
 import os
 from pathlib import Path
@@ -15,13 +15,13 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             "algorithm",
-            default_value="centerpoint",
-            description="Detection algorithm ('centerpoint' or 'pointpillar')",
+            default_value="voxelnext",
+            description="Detection algorithm (only 'voxelnext' is supported)",
         ),
         DeclareLaunchArgument(
             "checkpoint_path",
             default_value=default_ckpt,
-            description="Path to CenterPoint checkpoint (.pt)",
+            description="Path to VoxelNeXt checkpoint (.pth)",
         ),
         DeclareLaunchArgument(
             "input_topic",

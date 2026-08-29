@@ -4,10 +4,8 @@
 Launches the complete laptop-side perception, 3D detection, human selection,
 and locomotion/greeting pipeline for the Unitree G1 humanoid on a real robot.
 
-Supported 3D Detection Backends:
-  - 'voxelnext'   : Fully-sparse anchor-free 3D detection (best for diverse human shapes)
-  - 'centerpoint' : Anchor-free CenterPoint model (livox_model_1.pt)
-  - 'pointpillar' : Voxelization + Pillar SSD detector
+3D detection backend: 'voxelnext' — fully-sparse anchor-free 3D
+detection (only supported backend).
 
 Prerequisites:
   1. Real robot sensors running:
@@ -19,11 +17,6 @@ Usage:
   # 1. Run with VoxelNeXt (default):
   ros2 launch g1_bringup real_human_follow.launch.py algorithm:=voxelnext
 
-  # 2. Run with CenterPoint:
-  ros2 launch g1_bringup real_human_follow.launch.py algorithm:=centerpoint
-
-  # 3. Run with PointPillars:
-  ros2 launch g1_bringup real_human_follow.launch.py algorithm:=pointpillar
 """
 
 import os
@@ -49,8 +42,8 @@ def generate_launch_description():
     # Walk up to the workspace root rather than counting parents: this file is
     # reached through install/ or, under --symlink-install, through src/, and the
     # two are at different depths. A fixed parents[N] silently lands outside the
-    # workspace, pcdet then fails to import, and the detector degrades to
-    # PointPillar clustering with only a warning.
+    # workspace, pcdet then fails to import, and the detector loads with an
+    # error (node publishes empty detections).
     ws_root = next(
         (p for p in Path(__file__).resolve().parents if (p / "VoxelNeXt").is_dir()),
         Path(__file__).resolve().parents[4],
@@ -60,14 +53,13 @@ def generate_launch_description():
     )
     voxelnext_dir_default = str(ws_root / "VoxelNeXt")
     voxelnext_ckpt_default = str(ws_root / "pt" / "voxelnext_nuscenes.pth")
-    centerpoint_ckpt_default = "/home/thakk100/Projects/Thesis/livox_detection/pt/livox_model_1.pt"
 
     return LaunchDescription([
         # ── Launch Arguments ──────────────────────────────────────────────────
         DeclareLaunchArgument(
             "algorithm",
             default_value="voxelnext",
-            description="Detection algorithm backend: 'voxelnext', 'centerpoint', or 'pointpillar'",
+            description="Detection algorithm backend (only 'voxelnext' is supported)",
         ),
         DeclareLaunchArgument(
             "checkpoint_path",
@@ -133,8 +125,13 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "linear_speed",
-            default_value="0.30",
+            default_value="0.90",
             description="Approach walking speed in m/s, used for the whole walk-up",
+        ),
+        DeclareLaunchArgument(
+            "yaw_rate",
+            default_value="0.25",
+            description="Turning speed in rad/s during approach rotation to face target",
         ),
         DeclareLaunchArgument(
             "auto_execute",
@@ -249,6 +246,7 @@ def generate_launch_description():
                 "standoff_distance": LaunchConfiguration("standoff_distance"),
                 "greeting_action": LaunchConfiguration("greeting_action"),
                 "linear_speed": LaunchConfiguration("linear_speed"),
+                "yaw_rate": LaunchConfiguration("yaw_rate"),
                 "auto_execute": LaunchConfiguration("auto_execute"),
                 "auto_greet": LaunchConfiguration("auto_greet"),
             }],

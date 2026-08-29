@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ReID — trajectories</title>
+<style>
+  :root { --bg:#0D1117; --panel:#161B22; --edge:#30363D; --txt:#C8D4EE; --dim:#8B949E; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--txt);
+               font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  #app { display:flex; flex-direction:column; height:100%; }
+  #main { flex:1; display:flex; min-height:0; }
+  #canvas { flex:1; position:relative; min-width:0; }
+  #canvas canvas { display:block; }
+  .tag { position:absolute; display:none; transform:translate(-50%,-160%); pointer-events:none;
+         background:rgba(13,17,23,0.85); border:1px solid #8B949E; padding:1px 6px;
+         font:11px ui-monospace,monospace; border-radius:4px; z-index:5; color:#E6EDF7; white-space:nowrap; }
+  #side { width:370px; border-left:1px solid var(--edge); display:flex; flex-direction:column;
+          background:var(--panel); }
+  #side h1 { font-size:14px; margin:0; padding:10px 14px; border-bottom:1px solid var(--edge);
+             display:flex; justify-content:space-between; align-items:center; }
+  #side h1 .sess { color:var(--dim); font-weight:normal; font-size:12px; }
+  #stats { padding:8px 14px; border-bottom:1px solid var(--edge); font-size:12px; line-height:1.7; }
+  #legend { display:flex; gap:10px; padding:6px 14px; border-bottom:1px solid var(--edge); font-size:11.5px; flex-wrap:wrap; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; }
+  #tablewrap { flex:1; overflow:auto; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th, td { padding:4px 8px; text-align:right; border-bottom:1px solid #21262D; }
+  th { position:sticky; top:0; background:var(--panel); color:var(--dim); font-weight:normal; z-index:1; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align:left; }
+  tr { cursor:pointer; }
+  tr:hover { background:#1F2733; }
+  tr.sel { background:#243247; }
+  .st-OK { color:#43D9AD; } .st-I { color:#F9C74F; } .st-M { color:#FF7B72; }
+  .caret { display:inline-block; margin-left:5px; padding:0 5px; border:1px solid #30363D;
+           border-radius:4px; color:#8B949E; font-size:10.5px; cursor:pointer; user-select:none; }
+  .caret:hover { color:#C8D4EE; border-color:#43D9AD; }
+  tr.gaps { cursor:default; background:#12161D; }
+  tr.gaps:hover { background:#12161D; }
+  tr.gaps td { text-align:left; padding:6px 8px 8px 26px; border-bottom:1px solid var(--edge); }
+  .gaplist { display:flex; flex-wrap:wrap; gap:6px; align-items:center; max-height:220px;
+             overflow:auto; }
+  .gaplist b { color:var(--dim); font-weight:normal; margin-right:4px; }
+  .gap { background:#1F2733; border:1px solid #30363D; border-radius:4px; padding:1px 7px;
+         font-size:11px; color:#FF9B94; cursor:pointer; white-space:nowrap; }
+  .gap:hover { border-color:#FF7B72; background:#2A2131; }
+  #bar { display:flex; align-items:center; gap:12px; padding:8px 14px;
+         background:var(--panel); border-top:1px solid var(--edge); font-size:12.5px; flex-wrap:wrap; }
+  #bar .hint { color:var(--dim); font-size:11.5px; }
+  input[type=range] { width:260px; accent-color:#43D9AD; }
+  label { display:flex; align-items:center; gap:6px; cursor:pointer; }
+  #cloudlabel { color:var(--dim); min-width:120px; }
+  #playbtn { background:#1F2733; color:#43D9AD; border:1px solid #30363D; border-radius:6px;
+             font:14px ui-monospace,monospace; padding:3px 12px; cursor:pointer; }
+  #playbtn:hover { background:#243247; }
+  #speed { background:#161B22; color:#C8D4EE; border:1px solid #30363D; border-radius:6px;
+           font:12px ui-monospace,monospace; padding:2px 4px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="app">
+  <div id="main">
+    <div id="canvas"></div>
+    <div id="side">
+      <h1>TRAJECTORIES <span class="sess" id="sess"></span></h1>
+      <div id="stats"></div>
+      <div id="legend">
+        <span><span class="dot" style="background:#43D9AD"></span>clean</span>
+        <span><span class="dot" style="background:#F9C74F"></span>interpolated</span>
+        <span><span class="dot" style="background:#FF7B72"></span>long absence</span>
+        <span style="color:var(--dim)">I = interp · MIS = absent &ge;10f · JMP = rejected jump · faint line = absence bridge</span>
+      </div>
+      <div id="tablewrap">
+        <table>
+          <thead><tr><th>#</th><th>last</th><th>frames</th><th>I</th><th>MIS</th><th>JMP</th><th></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div id="bar">
+    <button id="playbtn" title="play / pause the session">&#9654;</button>
+    <select id="speed" title="playback speed">
+      <option value="0.5">0.5&times;</option>
+      <option value="1" selected>1&times;</option>
+      <option value="2">2&times;</option>
+      <option value="4">4&times;</option>
+    </select>
+    <span id="cloudlabel">cloud: —</span>
+    <input type="range" id="frameslider" min="0" max="0" value="0">
+    <label><input type="checkbox" id="cloudon" checked> cloud</label>
+    <label title="camera stays centred on the selected person while playing"><input type="checkbox" id="follow"> follow</label>
+    <span style="flex:1"></span>
+    <span class="hint">click a trajectory or row = select &amp; focus · dbl-click canvas = fit all · &#9654; plays the session live</span>
+  </div>
+</div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
