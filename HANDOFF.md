@@ -3,6 +3,7 @@
 > **Other active workstreams:**
 > - Isaac ROS / onboard Orin NX → [HANDOFF_ISAAC_ROS_ROBOT.md](HANDOFF_ISAAC_ROS_ROBOT.md) + [ISAAC_ROS_ON_ROBOT.md](ISAAC_ROS_ON_ROBOT.md)
 > - **Person ReID (VoxelKP embed head, LUT, contrastive training)** → [HANDOFF_REID.md](HANDOFF_REID.md)
+> - **WBC / GR00T / fall-recovery worktree fleet (6 branches, unmerged)** → [HANDOFF_WBC_WORKTREES.md](HANDOFF_WBC_WORKTREES.md)
 >
 > This document covers sim / laptop-side SLAM+detection only.
 
