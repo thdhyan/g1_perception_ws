@@ -4,52 +4,86 @@
 <meta charset="utf-8">
 <title>ReID — same person? (frame pairs)</title>
 <style>
-  :root { --bg:#0D1117; --panel:#161B22; --edge:#30363D; --txt:#C8D4EE; --dim:#8B949E; }
-  * { box-sizing: border-box; }
-  html, body { margin:0; height:100%; background:var(--bg); color:var(--txt);
-               font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-  #app { display:flex; flex-direction:column; height:100%; }
-  #panels { flex:1; display:flex; gap:0; min-height:0; }
-  .panel { flex:1; display:flex; flex-direction:column; border-right:1px solid var(--edge); min-width:0; }
-  .panel:last-child { border-right:none; }
-  .phead { padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--edge);
-           font-size:13px; display:flex; justify-content:space-between; align-items:center; }
+  :root { --bg:#0D1117; --panel:#161B22; --edge:#30363D; --txt:#C8D4EE; --dim:#8B949E;
+          --accent:#58A6FF; --green:#3fb950; --yellow:#d29922; --red:#f85149; }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  html, body { height:100%; background:var(--bg); color:var(--txt);
+               font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size:13px; }
+
+  /* ── main layout: 3D panels + side panel ──────────────────────────────── */
+  #app { display:flex; height:100%; }
+  #panels { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .panel { flex:1; display:flex; flex-direction:column; border-bottom:1px solid var(--edge); min-height:0; }
+  .panel:last-child { border-bottom:none; }
+  .phead { padding:6px 12px; background:var(--panel); border-bottom:1px solid var(--edge);
+           font-size:12px; display:flex; justify-content:space-between; align-items:center; }
   .pcanvas { flex:1; position:relative; min-height:0; }
   .pcanvas canvas { display:block; }
-  .tag { padding:1px 8px; border-radius:10px; font-size:11px; opacity:.9; }
+  .tag { padding:1px 8px; border-radius:10px; font-size:10px; opacity:.9; }
   #A .phead { color:#F9C74F; }  #B .phead { color:#43D9AD; }
   .tagA { background:#3a2f0e; color:#F9C74F; }
   .tagB { background:#0e3a2c; color:#43D9AD; }
-  #info-bar { display:flex; align-items:center; gap:16px; padding:6px 14px;
-              background:#111820; border-bottom:1px solid var(--edge); font-size:12px; flex-wrap:wrap; }
-  #info-bar .dim { color:var(--dim); }
-  #info-bar .hi  { color:var(--txt); font-weight:600; }
-  #info-bar .cos { font-weight:600; }
-  #info-bar .cos-high { color:#3fb950; }
-  #info-bar .cos-mid  { color:#d29922; }
-  #info-bar .cos-low  { color:#f85149; }
-  .play-group { display:flex; align-items:center; gap:6px; }
-  .play-btn { background:#238636; color:#fff; border:1px solid #2ea043; border-radius:6px;
-              padding:4px 14px; font:inherit; cursor:pointer; font-size:12px; }
+
+  /* ── side panel ──────────────────────────────────────────────────────── */
+  #side { width:320px; min-width:280px; background:var(--panel); border-left:1px solid var(--edge);
+          display:flex; flex-direction:column; overflow-y:auto; }
+  .side-section { padding:12px 14px; border-bottom:1px solid var(--edge); }
+  .side-section:last-child { border-bottom:none; }
+  .side-title { font-size:11px; text-transform:uppercase; color:var(--dim); letter-spacing:1px;
+                margin-bottom:8px; }
+
+  /* detection info */
+  .det-card { background:#0D1117; border:1px solid var(--edge); border-radius:6px;
+              padding:10px 12px; margin-bottom:8px; }
+  .det-card .label { font-size:10px; color:var(--dim); text-transform:uppercase; }
+  .det-card .val { font-size:15px; font-weight:700; margin:2px 0 6px; }
+  .det-card .sub { font-size:11px; color:var(--dim); }
+  .det-row { display:flex; gap:8px; }
+  .det-row .det-card { flex:1; }
+  .cos-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-weight:700; font-size:14px; }
+  .cos-high { background:#0e3a2c; color:#3fb950; }
+  .cos-mid  { background:#3a2f0e; color:#d29922; }
+  .cos-low  { background:#3a0e0e; color:#f85149; }
+
+  /* controls */
+  .ctrl-btn { display:block; width:100%; padding:10px; margin-bottom:6px; border-radius:6px;
+              font:inherit; font-size:13px; font-weight:600; cursor:pointer; border:1px solid var(--edge);
+              background:#21262D; color:var(--txt); text-align:center; }
+  .ctrl-btn:hover { border-color:#5A6985; }
+  .ctrl-btn.yes { color:#F9C74F; border-color:#3a2f0e; }
+  .ctrl-btn.yes:hover { background:#3a2f0e; }
+  .ctrl-btn.no { color:#FF7B72; border-color:#3a0e0e; }
+  .ctrl-btn.no:hover { background:#3a0e0e; }
+  .ctrl-btn.skip { color:var(--dim); }
+  .ctrl-row { display:flex; gap:6px; }
+  .ctrl-row .ctrl-btn { flex:1; }
+  .play-btn { background:#238636; color:#fff; border-color:#2ea043; }
   .play-btn:hover { background:#2ea043; }
   .play-btn:disabled { opacity:.4; cursor:default; background:#21262D; border-color:var(--edge); color:var(--dim); }
-  #play-speed { background:#21262D; color:var(--txt); border:1px solid var(--edge);
-                border-radius:4px; padding:2px 6px; font:inherit; font-size:11px; width:60px; }
-  #bar { display:flex; align-items:center; gap:14px; padding:8px 14px;
-         background:var(--panel); border-top:1px solid var(--edge); font-size:12.5px; flex-wrap:wrap; }
-  #status { flex:1; color:var(--dim); min-width:200px; }
-  #status b { color:var(--txt); }
-  button { background:#21262D; color:var(--txt); border:1px solid var(--edge);
-           border-radius:6px; padding:5px 12px; font: inherit; cursor:pointer; }
-  button:hover { border-color:#5A6985; }
-  button.yes { color:#F9C74F; }  button.no { color:#FF7B72; }
+
+  /* status / description */
+  .status-box { background:#0D1117; border:1px solid var(--edge); border-radius:6px;
+                padding:10px 12px; font-size:12px; line-height:1.6; color:var(--dim); }
+  .status-box b { color:var(--txt); }
+  .hint { font-size:11px; color:var(--dim); margin-top:8px; line-height:1.5; }
   kbd { background:#21262D; border:1px solid var(--edge); border-bottom-width:2px;
-        border-radius:4px; padding:0 5px; font-size:11px; }
-  .hint { color:var(--dim); font-size:11.5px; }
+        border-radius:3px; padding:0 4px; font-size:10px; }
+
+  /* playback info */
+  .play-info { font-size:11px; color:var(--dim); margin-top:4px; }
+  .play-info .hi { color:var(--green); font-weight:600; }
+
+  /* done overlay */
   #done { position:fixed; inset:0; display:none; align-items:center; justify-content:center;
           background:rgba(13,17,23,.85); z-index:10; }
   #done .box { background:var(--panel); border:1px solid var(--edge); border-radius:10px;
                padding:28px 40px; text-align:center; font-size:15px; line-height:1.9; }
+
+  /* 3D overlay labels */
+  .box-label { position:absolute; pointer-events:none; font-size:10px; font-weight:600;
+               padding:1px 5px; border-radius:3px; white-space:nowrap; z-index:5; }
+  .box-label-a { background:rgba(249,199,79,.15); color:#F9C74F; border:1px solid rgba(249,199,79,.3); }
+  .box-label-b { background:rgba(67,217,173,.15); color:#43D9AD; border:1px solid rgba(67,217,173,.3); }
 </style>
 <script type="importmap">
 { "imports": { "three": "/vendor/three.module.js" } }
@@ -63,35 +97,79 @@
       <div class="pcanvas" id="A-canvas"></div>
     </div>
     <div class="panel" id="B">
-      <div class="phead">
-        <span id="B-title">FRAME B</span>
-        <div class="play-group">
-          <button class="play-btn" id="play-btn" disabled>▶ Play A→B</button>
-          <input id="play-speed" type="number" value="10" min="2" max="60" title="fps"> <span class="dim">fps</span>
-        </div>
-        <span class="tag tagB" id="B-tag"></span>
-      </div>
+      <div class="phead"><span id="B-title">FRAME B</span><span class="tag tagB" id="B-tag"></span></div>
       <div class="pcanvas" id="B-canvas"></div>
     </div>
   </div>
-  <div id="info-bar">
-    <span class="dim">A:</span> <span id="info-a" class="hi"></span>
-    <span class="dim">| B:</span> <span id="info-b" class="hi"></span>
-    <span class="dim">|</span>
-    <span class="dim">cos:</span> <span id="info-cos" class="cos"></span>
-    <span class="dim">gap:</span> <span id="info-gap"></span>
-    <span id="info-track" style="margin-left:auto; color:var(--dim);"></span>
-  </div>
-  <div id="bar">
-    <span id="status">Loading…</span>
-    <button class="yes" id="b-yes">⟦Y⟧ same</button>
-    <button class="no"  id="b-no">⟦N⟧ different</button>
-    <button id="b-skip">⟦Space⟧ skip</button>
-    <button id="b-prev">⟦←⟧ prev</button>
-    <button id="b-quit">⟦Q⟧ finish</button>
-    <span class="hint">drag=rotate · right-drag=pan · wheel=zoom · dbl-click=fit</span>
+
+  <div id="side">
+    <!-- Detection Info -->
+    <div class="side-section">
+      <div class="side-title">Detection Info</div>
+      <div class="det-row">
+        <div class="det-card">
+          <div class="label">Person A</div>
+          <div class="val" id="det-a-frame" style="color:#F9C74F">—</div>
+          <div class="sub" id="det-a-info"></div>
+        </div>
+        <div class="det-card">
+          <div class="label">Person B</div>
+          <div class="val" id="det-b-frame" style="color:#43D9AD">—</div>
+          <div class="sub" id="det-b-info"></div>
+        </div>
+      </div>
+      <div class="det-card">
+        <div class="label">Height / Width</div>
+        <div style="display:flex; gap:12px; align-items:baseline;">
+          <div><span style="color:#F9C74F;">A:</span> <span id="det-a-hw" class="val" style="font-size:13px;">—</span></div>
+          <div><span style="color:#43D9AD;">B:</span> <span id="det-b-hw" class="val" style="font-size:13px;">—</span></div>
+        </div>
+      </div>
+      <div class="det-card">
+        <div class="label">Cosine Similarity</div>
+        <div id="det-cos" class="cos-badge cos-mid" style="font-size:18px;">—</div>
+        <div class="sub" id="det-gap"></div>
+      </div>
+    </div>
+
+    <!-- Playback -->
+    <div class="side-section">
+      <div class="side-title">Playback</div>
+      <button class="ctrl-btn play-btn" id="play-btn" disabled>▶ Play A → B</button>
+      <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+        <label style="font-size:11px; color:var(--dim);">Speed:</label>
+        <input id="play-speed" type="number" value="10" min="2" max="60"
+               style="width:50px; background:#0D1117; color:var(--txt); border:1px solid var(--edge);
+                      border-radius:4px; padding:3px 6px; font:inherit; font-size:11px;">
+        <span style="font-size:11px; color:var(--dim);">fps</span>
+      </div>
+      <div class="play-info" id="play-status"></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="side-section">
+      <div class="side-title">Verdict</div>
+      <button class="ctrl-btn yes" id="b-yes">⟦Y⟧ Same person</button>
+      <button class="ctrl-btn no"  id="b-no">⟦N⟧ Different person</button>
+      <div class="ctrl-row">
+        <button class="ctrl-btn skip" id="b-skip">⟦Space⟧ Skip</button>
+        <button class="ctrl-btn" id="b-prev">⟦←⟧ Prev</button>
+      </div>
+      <button class="ctrl-btn" id="b-quit" style="color:var(--dim);">⟦Q⟧ Finish</button>
+    </div>
+
+    <!-- Status / Description -->
+    <div class="side-section" style="flex:1;">
+      <div class="side-title">Status</div>
+      <div class="status-box" id="status">Loading…</div>
+      <div class="hint">
+        <kbd>drag</kbd> rotate · <kbd>right-drag</kbd> pan · <kbd>wheel</kbd> zoom · <kbd>dbl-click</kbd> fit<br>
+        <kbd>Y</kbd> same · <kbd>N</kbd> different · <kbd>Space</kbd> skip · <kbd>←</kbd> prev · <kbd>P</kbd> play
+      </div>
+    </div>
   </div>
 </div>
+
 <div id="done"><div class="box" id="done-box"></div></div>
 <script type="module" src="/app.js"></script>
 </body>

@@ -252,7 +252,8 @@ def pair_payload(j):
     S = STATE
     p = S["pairs"][j]
     npz = S["npz"]
-    out = {"meta": p}
+    # add detection scores to meta for the frontend
+    meta = dict(p)
     for side, fi, hi in (("a", p["f0"], p["k0"]), ("b", p["f1"], p["k1"])):
         if fi not in S["frame_cache"]:
             fname = str(npz["frame_files"][fi])
@@ -263,6 +264,11 @@ def pair_payload(j):
                 np.asarray(boxes[labels == PED_LABEL], dtype=np.float32),
                 np.asarray(scores[labels == PED_LABEL], dtype=np.float32),
             )
+        pts, peds, peds_sc = S["frame_cache"][fi]
+        if hi < len(peds_sc):
+            meta[f"score_{side}"] = round(float(peds_sc[hi]), 3)
+    out = {"meta": meta}
+    for side, fi, hi in (("a", p["f0"], p["k0"]), ("b", p["f1"], p["k1"])):
         pts, peds, peds_sc = S["frame_cache"][fi]
         out[side] = frame_payload(fi, hi, pts, peds, peds_sc)
     return out

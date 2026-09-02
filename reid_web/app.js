@@ -36,15 +36,40 @@ function boxEdgePositions(b) {
   return pos;
 }
 
+// Create a canvas texture for 3D text labels
+function makeLabelTexture(text, bgColor, textColor) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const fontSize = 48;
+  ctx.font = `bold ${fontSize}px monospace`;
+  const metrics = ctx.measureText(text);
+  const w = metrics.width + 20;
+  const h = fontSize + 16;
+  canvas.width = w;
+  canvas.height = h;
+  ctx.fillStyle = bgColor;
+  ctx.roundRect(0, 0, w, h, 6);
+  ctx.fill();
+  ctx.font = `bold ${fontSize}px monospace`;
+  ctx.fillStyle = textColor;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 10, h / 2);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  return { tex, w: w / 60, h: h / 60 }; // scale down for 3D
+}
+
 // ─── one interactive 3D panel ────────────────────────────────────────────────
 class Panel {
-  constructor(cId, titleId, tagId, hiColor) {
+  constructor(cId, titleId, tagId, hiColor, labelClass) {
     this.container = document.getElementById(cId);
     this.titleEl   = document.getElementById(titleId);
     this.tagEl     = document.getElementById(tagId);
     this.hiColor   = hiColor;
+    this.labelClass = labelClass;
+    this.htmlLabels = [];   // HTML overlay labels
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(window.devicePixelRatio || 1);
     this.renderer.setClearColor(BG);
     this.container.appendChild(this.renderer.domElement);
@@ -59,6 +84,7 @@ class Panel {
     this.objs = [];
     this.fitTarget = new THREE.Vector3();
     this.fitRadius = 3;
+    this.labels = [];     // 3D sprite labels
 
     this.renderer.domElement.addEventListener('dblclick', () =>
       this.fit(this.fitTarget, this.fitRadius));
@@ -89,9 +115,15 @@ class Panel {
       o.material?.dispose?.();
     }
     this.objs = [];
+    this.clearLabels();
   }
 
-  load(ptsF32, hiIdx, peds, title, tag) {
+  clearLabels() {
+    for (const el of this.htmlLabels) el.remove();
+    this.htmlLabels = [];
+  }
+
+  load(ptsF32, hiIdx, peds, title, tag, meta) {
     this.clear();
     const hi = peds[hiIdx].box;
 
@@ -111,9 +143,14 @@ class Panel {
       size: PT_SIZE, vertexColors: true, sizeAttenuation: true }));
     this.scene.add(points); this.objs.push(points);
 
-    // boxes: highlighted bold, others dim
-    for (const p of peds)
-      this.addBox(p.box, p.hi ? this.hiColor : BOX_DIM);
+    // boxes: highlighted bold, others dim — with 3D labels
+    for (const p of peds) {
+      const isHi = p.hi;
+      this.addBox(p.box, isHi ? this.hiColor : BOX_DIM);
+      if (isHi && meta) {
+        this.addBoxLabel3D(p.box, meta);
+      }
+    }
 
     // reference grid on the local floor (box bottom)
     const grid = new THREE.GridHelper(10, 20, 0x39445C, 0x1C2333);
@@ -128,7 +165,7 @@ class Panel {
   }
 
   /** Lightweight update: swap point cloud + boxes without refitting camera. */
-  loadFrame(ptsF32, hiIdx, peds) {
+  loadFrame(ptsF32, hiIdx, peds, meta) {
     this.clear();
     const hi = peds[hiIdx].box;
 
@@ -147,8 +184,13 @@ class Panel {
       size: PT_SIZE, vertexColors: true, sizeAttenuation: true }));
     this.scene.add(points); this.objs.push(points);
 
-    for (const p of peds)
-      this.addBox(p.box, p.hi ? this.hiColor : BOX_DIM);
+    for (const p of peds) {
+      const isHi = p.hi;
+      this.addBox(p.box, isHi ? this.hiColor : BOX_DIM);
+      if (isHi && meta) {
+        this.addBoxLabel3D(p.box, meta);
+      }
+    }
 
     const grid = new THREE.GridHelper(10, 20, 0x39445C, 0x1C2333);
     grid.position.z = hi[2] - hi[5] / 2;
@@ -162,25 +204,49 @@ class Panel {
     this.scene.add(ls); this.objs.push(ls);
   }
 
+  /** Add a 3D sprite label above the highlighted box showing height/width. */
+  addBoxLabel3D(b, meta) {
+    const [cx, cy, cz, dx, dy, dz, yaw] = b;
+    const h = (dz * 100).toFixed(0);
+    const w = (dx * 100).toFixed(0);
+    const text = `h:${h}cm w:${w}cm`;
+    const isA = this === panelA;
+    const { tex, w: sw, h: sh } = makeLabelTexture(
+      text,
+      isA ? 'rgba(249,199,79,0.2)' : 'rgba(67,217,173,0.2)',
+      isA ? '#F9C74F' : '#43D9AD'
+    );
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.set(cx, cy, cz + dz / 2 + 0.25); // above the box
+    sprite.scale.set(sw, sh, 1);
+    this.scene.add(sprite);
+    this.objs.push(sprite);
+  }
+
   render() { this.renderer.render(this.scene, this.camera); }
 }
 
 // ─── app state ───────────────────────────────────────────────────────────────
-const panelA = new Panel('A-canvas', 'A-title', 'A-tag', BOX_HI_A);
-const panelB = new Panel('B-canvas', 'B-title', 'B-tag', BOX_HI_B);
+const panelA = new Panel('A-canvas', 'A-title', 'A-tag', BOX_HI_A, 'box-label-a');
+const panelB = new Panel('B-canvas', 'B-title', 'B-tag', BOX_HI_B, 'box-label-b');
 
 const statusEl = document.getElementById('status');
 const doneEl   = document.getElementById('done');
 const doneBox  = document.getElementById('done-box');
 
-// info bar elements
-const infoA    = document.getElementById('info-a');
-const infoB    = document.getElementById('info-b');
-const infoCos  = document.getElementById('info-cos');
-const infoGap  = document.getElementById('info-gap');
-const infoTrack= document.getElementById('info-track');
-const playBtn  = document.getElementById('play-btn');
-const playSpeed= document.getElementById('play-speed');
+// side panel elements
+const detAFrame = document.getElementById('det-a-frame');
+const detAInfo  = document.getElementById('det-a-info');
+const detBFrame = document.getElementById('det-b-frame');
+const detBInfo  = document.getElementById('det-b-info');
+const detAHW    = document.getElementById('det-a-hw');
+const detBHW    = document.getElementById('det-b-hw');
+const detCos    = document.getElementById('det-cos');
+const detGap    = document.getElementById('det-gap');
+const playBtn   = document.getElementById('play-btn');
+const playSpeed = document.getElementById('play-speed');
+const playStatus= document.getElementById('play-status');
 
 let INIT = null, idx = 0, counts = { yes: 0, no: 0, skip: 0 }, busy = false, finished = false;
 
@@ -191,42 +257,49 @@ const key = p => `${p.f0}_${p.k0}_${p.f1}_${p.k1}`;
 
 function setCounts(c) { counts = c || counts; }
 
-// ─── info bar ────────────────────────────────────────────────────────────────
-function updateInfoBar(meta) {
-  const h0 = meta.h0, h1 = meta.h1, w0 = meta.w0, w1 = meta.w1;
-  infoA.textContent = `f${meta.f0} k${meta.k0}  h=${(h0*100).toFixed(0)}cm  w=${(w0*100).toFixed(0)}cm`;
-  infoB.textContent = `f${meta.f1} k${meta.k1}  h=${(h1*100).toFixed(0)}cm  w=${(w1*100).toFixed(0)}cm`;
+// ─── side panel update ───────────────────────────────────────────────────────
+function updateSidePanel(meta) {
+  // Person A
+  detAFrame.textContent = `f${meta.f0} · k${meta.k0}`;
+  detAInfo.textContent = `score: ${meta.score_a?.toFixed(2) ?? '—'}`;
+  detAHW.textContent = `${(meta.h0*100).toFixed(0)} × ${(meta.w0*100).toFixed(0)} cm`;
 
+  // Person B
+  detBFrame.textContent = `f${meta.f1} · k${meta.k1}`;
+  detBInfo.textContent = `score: ${meta.score_b?.toFixed(2) ?? '—'}`;
+  detBHW.textContent = `${(meta.h1*100).toFixed(0)} × ${(meta.w1*100).toFixed(0)} cm`;
+
+  // Cosine similarity
   if (meta.cos_sim != null) {
     const cs = meta.cos_sim;
-    const cls = cs >= 0.8 ? 'cos-high' : cs >= 0.5 ? 'cos-mid' : 'cos-low';
-    infoCos.textContent = cs.toFixed(3);
-    infoCos.className = 'cos ' + cls;
+    detCos.textContent = cs.toFixed(3);
+    detCos.className = 'cos-badge ' + (cs >= 0.8 ? 'cos-high' : cs >= 0.5 ? 'cos-mid' : 'cos-low');
   } else {
-    infoCos.textContent = 'n/a';
-    infoCos.className = 'cos';
+    detCos.textContent = 'n/a';
+    detCos.className = 'cos-badge cos-mid';
   }
 
-  infoGap.textContent = `${meta.gap} frames`;
-  infoTrack.textContent = '';
+  // Gap
+  detGap.textContent = `gap: ${meta.gap} frames (${(meta.gap * 0.1).toFixed(1)}s at 10Hz)`;
 }
 
 function statusPair(p, extra) {
   statusEl.innerHTML =
-    `Pair <b>${idx+1}/${INIT.n_pairs}</b> &nbsp;·&nbsp; frame <b>${p.f0} → ${p.f1}</b> ` +
-    `(+${p.gap*100} ms) &nbsp;·&nbsp; centre dist <b>${p.dist.toFixed(2)}</b>` +
-    ` &nbsp;·&nbsp; ✓same <b>${counts.yes}</b> &nbsp; ✗diff <b>${counts.no}</b> &nbsp; →skip <b>${counts.skip}</b>` +
-    (extra ? ` &nbsp;·&nbsp; ${extra}` : '');
+    `<b>Pair ${idx+1}/${INIT.n_pairs}</b><br>` +
+    `frame <b>${p.f0} → ${p.f1}</b> (+${p.gap} frames)<br>` +
+    `cosine: <b>${p.cos_sim != null ? p.cos_sim.toFixed(3) : 'n/a'}</b><br>` +
+    `✓same <b>${counts.yes}</b> · ✗diff <b>${counts.no}</b> · →skip <b>${counts.skip}</b>` +
+    (extra ? `<br>${extra}` : '');
 }
 
 function setPanel(P, side, d, meta) {
-  const sd = d[side];                                   // side = 'a' | 'b' (JSON key)
+  const sd = d[side];
   const pts = b64f32(sd.pts_b64);
   const hiIdx = Math.max(0, sd.peds.findIndex(p => p.hi));
   const hi = sd.peds[hiIdx];
   const title = `FRAME ${side === 'a' ? meta.f0 : meta.f1}`;
   const tag = `person #${side === 'a' ? meta.k0 : meta.k1} · s=${hi.score.toFixed(2)}`;
-  P.load(pts, hiIdx, sd.peds, title, tag);
+  P.load(pts, hiIdx, sd.peds, title, tag, meta);
 }
 
 async function show(j) {
@@ -238,7 +311,7 @@ async function show(j) {
   setPanel(panelA, 'a', d, d.meta);
   setPanel(panelB, 'b', d, d.meta);
   idx = j;
-  updateInfoBar(d.meta);
+  updateSidePanel(d.meta);
   playBtn.disabled = false;
   const unans = Object.keys(INIT.answered).length < INIT.n_pairs;
   statusPair(d.meta, unans ? null : '<b>all pairs answered — ← to revisit</b>');
@@ -291,7 +364,7 @@ async function startPlayback() {
   playing = true;
   playBtn.textContent = '■ Stop';
   playBtn.disabled = false;
-  infoTrack.textContent = 'fetching sequence…';
+  playStatus.textContent = 'fetching sequence…';
 
   playAbort = new AbortController();
   try {
@@ -299,13 +372,13 @@ async function startPlayback() {
                            { signal: playAbort.signal });
     const d = await r.json();
     if (!d.sequence || d.sequence.length === 0) {
-      infoTrack.textContent = 'no sequence data';
+      playStatus.textContent = 'no sequence data';
       stopPlayback();
       return;
     }
     playSeq = d.sequence;
     playFrameIdx = 0;
-    infoTrack.textContent = `playing 0/${playSeq.length}`;
+    playStatus.textContent = `playing 0/${playSeq.length}`;
 
     const fps = Math.max(2, Math.min(60, parseInt(playSpeed.value) || 10));
     const delay = 1000 / fps;
@@ -315,15 +388,25 @@ async function startPlayback() {
       const frame = playSeq[i];
       const pts = b64f32(frame.pts_b64);
       const hiIdx = frame.hi_idx >= 0 ? frame.hi_idx : 0;
+      const hiBox = frame.peds[hiIdx]?.box;
 
-      panelB.loadFrame(pts, hiIdx, frame.peds);
+      // build a mini-meta for the label
+      const frameMeta = {
+        h0: p.h0, w0: p.w0,
+        h1: hiBox ? hiBox[5] : p.h1,
+        w1: hiBox ? hiBox[3] : p.w1,
+      };
+
+      panelB.loadFrame(pts, hiIdx, frame.peds, frameMeta);
       panelB.titleEl.textContent = `FRAME B  ${frame.fi} / ${p.f1}` +
         (frame.track_lost ? '  ⚠ track lost' : '');
 
-      const dz = frame.peds[hiIdx]?.box[5];
-      infoTrack.textContent = `${i+1}/${playSeq.length}  f${frame.fi}` +
-        (dz ? `  h=${(dz*100).toFixed(0)}cm` : '') +
-        (frame.track_lost ? '  ⚠ lost' : '');
+      const dz = hiBox?.[5];
+      const dx = hiBox?.[3];
+      playStatus.innerHTML =
+        `${i+1}/${playSeq.length} · f${frame.fi}` +
+        (dz ? `<br><span class="hi">h=${(dz*100).toFixed(0)}cm w=${(dx*100).toFixed(0)}cm</span>` : '') +
+        (frame.track_lost ? '<br>⚠ track lost' : '');
 
       await new Promise((res, reject) => {
         const t = setTimeout(res, delay);
@@ -331,7 +414,7 @@ async function startPlayback() {
       });
     }
   } catch (e) {
-    if (e.name !== 'AbortError') infoTrack.textContent = `play error: ${e}`;
+    if (e.name !== 'AbortError') playStatus.textContent = `play error: ${e}`;
   } finally {
     if (playing) stopPlayback();
   }
@@ -342,7 +425,7 @@ function stopPlayback() {
   if (playAbort) playAbort.abort();
   playAbort = null;
   playSeq = null;
-  playBtn.textContent = '▶ Play A→B';
+  playBtn.textContent = '▶ Play A → B';
   // restore original Frame B
   if (INIT && idx >= 0 && idx < INIT.n_pairs) show(idx);
 }
