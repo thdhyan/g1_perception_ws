@@ -13,13 +13,28 @@
   .panel { flex:1; display:flex; flex-direction:column; border-right:1px solid var(--edge); min-width:0; }
   .panel:last-child { border-right:none; }
   .phead { padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--edge);
-           font-size:13px; display:flex; justify-content:space-between; }
+           font-size:13px; display:flex; justify-content:space-between; align-items:center; }
   .pcanvas { flex:1; position:relative; min-height:0; }
   .pcanvas canvas { display:block; }
   .tag { padding:1px 8px; border-radius:10px; font-size:11px; opacity:.9; }
   #A .phead { color:#F9C74F; }  #B .phead { color:#43D9AD; }
   .tagA { background:#3a2f0e; color:#F9C74F; }
   .tagB { background:#0e3a2c; color:#43D9AD; }
+  #info-bar { display:flex; align-items:center; gap:16px; padding:6px 14px;
+              background:#111820; border-bottom:1px solid var(--edge); font-size:12px; flex-wrap:wrap; }
+  #info-bar .dim { color:var(--dim); }
+  #info-bar .hi  { color:var(--txt); font-weight:600; }
+  #info-bar .cos { font-weight:600; }
+  #info-bar .cos-high { color:#3fb950; }
+  #info-bar .cos-mid  { color:#d29922; }
+  #info-bar .cos-low  { color:#f85149; }
+  .play-group { display:flex; align-items:center; gap:6px; }
+  .play-btn { background:#238636; color:#fff; border:1px solid #2ea043; border-radius:6px;
+              padding:4px 14px; font:inherit; cursor:pointer; font-size:12px; }
+  .play-btn:hover { background:#2ea043; }
+  .play-btn:disabled { opacity:.4; cursor:default; background:#21262D; border-color:var(--edge); color:var(--dim); }
+  #play-speed { background:#21262D; color:var(--txt); border:1px solid var(--edge);
+                border-radius:4px; padding:2px 6px; font:inherit; font-size:11px; width:60px; }
   #bar { display:flex; align-items:center; gap:14px; padding:8px 14px;
          background:var(--panel); border-top:1px solid var(--edge); font-size:12.5px; flex-wrap:wrap; }
   #status { flex:1; color:var(--dim); min-width:200px; }
@@ -48,9 +63,24 @@
       <div class="pcanvas" id="A-canvas"></div>
     </div>
     <div class="panel" id="B">
-      <div class="phead"><span id="B-title">FRAME B</span><span class="tag tagB" id="B-tag"></span></div>
+      <div class="phead">
+        <span id="B-title">FRAME B</span>
+        <div class="play-group">
+          <button class="play-btn" id="play-btn" disabled>▶ Play A→B</button>
+          <input id="play-speed" type="number" value="10" min="2" max="60" title="fps"> <span class="dim">fps</span>
+        </div>
+        <span class="tag tagB" id="B-tag"></span>
+      </div>
       <div class="pcanvas" id="B-canvas"></div>
     </div>
+  </div>
+  <div id="info-bar">
+    <span class="dim">A:</span> <span id="info-a" class="hi"></span>
+    <span class="dim">| B:</span> <span id="info-b" class="hi"></span>
+    <span class="dim">|</span>
+    <span class="dim">cos:</span> <span id="info-cos" class="cos"></span>
+    <span class="dim">gap:</span> <span id="info-gap"></span>
+    <span id="info-track" style="margin-left:auto; color:var(--dim);"></span>
   </div>
   <div id="bar">
     <span id="status">Loading…</span>

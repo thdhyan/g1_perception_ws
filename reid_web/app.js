@@ -127,6 +127,34 @@ class Panel {
     this.fit(this.fitTarget, this.fitRadius);
   }
 
+  /** Lightweight update: swap point cloud + boxes without refitting camera. */
+  loadFrame(ptsF32, hiIdx, peds) {
+    this.clear();
+    const hi = peds[hiIdx].box;
+
+    const n = ptsF32.length / 3;
+    const col = new Float32Array(n * 3);
+    const t = this === panelA ? TINT_A : TINT_B;
+    for (let i = 0; i < n; i++) {
+      const x = ptsF32[i*3] - hi[0], y = ptsF32[i*3+1] - hi[1], z = ptsF32[i*3+2] - hi[2];
+      const v = (x*x + y*y + z*z) <= TINT_R*TINT_R ? t : DIM;
+      col[i*3] = v.x; col[i*3+1] = v.y; col[i*3+2] = v.z;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(ptsF32, 3));
+    g.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+    const points = new THREE.Points(g, new THREE.PointsMaterial({
+      size: PT_SIZE, vertexColors: true, sizeAttenuation: true }));
+    this.scene.add(points); this.objs.push(points);
+
+    for (const p of peds)
+      this.addBox(p.box, p.hi ? this.hiColor : BOX_DIM);
+
+    const grid = new THREE.GridHelper(10, 20, 0x39445C, 0x1C2333);
+    grid.position.z = hi[2] - hi[5] / 2;
+    this.scene.add(grid); this.objs.push(grid);
+  }
+
   addBox(b, color) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(boxEdgePositions(b), 3));
@@ -145,16 +173,48 @@ const statusEl = document.getElementById('status');
 const doneEl   = document.getElementById('done');
 const doneBox  = document.getElementById('done-box');
 
+// info bar elements
+const infoA    = document.getElementById('info-a');
+const infoB    = document.getElementById('info-b');
+const infoCos  = document.getElementById('info-cos');
+const infoGap  = document.getElementById('info-gap');
+const infoTrack= document.getElementById('info-track');
+const playBtn  = document.getElementById('play-btn');
+const playSpeed= document.getElementById('play-speed');
+
 let INIT = null, idx = 0, counts = { yes: 0, no: 0, skip: 0 }, busy = false, finished = false;
+
+// playback state
+let playing = false, playAbort = null, playSeq = null, playFrameIdx = 0;
 
 const key = p => `${p.f0}_${p.k0}_${p.f1}_${p.k1}`;
 
 function setCounts(c) { counts = c || counts; }
 
+// ─── info bar ────────────────────────────────────────────────────────────────
+function updateInfoBar(meta) {
+  const h0 = meta.h0, h1 = meta.h1, w0 = meta.w0, w1 = meta.w1;
+  infoA.textContent = `f${meta.f0} k${meta.k0}  h=${(h0*100).toFixed(0)}cm  w=${(w0*100).toFixed(0)}cm`;
+  infoB.textContent = `f${meta.f1} k${meta.k1}  h=${(h1*100).toFixed(0)}cm  w=${(w1*100).toFixed(0)}cm`;
+
+  if (meta.cos_sim != null) {
+    const cs = meta.cos_sim;
+    const cls = cs >= 0.8 ? 'cos-high' : cs >= 0.5 ? 'cos-mid' : 'cos-low';
+    infoCos.textContent = cs.toFixed(3);
+    infoCos.className = 'cos ' + cls;
+  } else {
+    infoCos.textContent = 'n/a';
+    infoCos.className = 'cos';
+  }
+
+  infoGap.textContent = `${meta.gap} frames`;
+  infoTrack.textContent = '';
+}
+
 function statusPair(p, extra) {
   statusEl.innerHTML =
     `Pair <b>${idx+1}/${INIT.n_pairs}</b> &nbsp;·&nbsp; frame <b>${p.f0} → ${p.f1}</b> ` +
-    `(+${p.gap*100} ms) &nbsp;·&nbsp; centre dist <b>${p.dist.toFixed(2)} m</b>` +
+    `(+${p.gap*100} ms) &nbsp;·&nbsp; centre dist <b>${p.dist.toFixed(2)}</b>` +
     ` &nbsp;·&nbsp; ✓same <b>${counts.yes}</b> &nbsp; ✗diff <b>${counts.no}</b> &nbsp; →skip <b>${counts.skip}</b>` +
     (extra ? ` &nbsp;·&nbsp; ${extra}` : '');
 }
@@ -178,6 +238,8 @@ async function show(j) {
   setPanel(panelA, 'a', d, d.meta);
   setPanel(panelB, 'b', d, d.meta);
   idx = j;
+  updateInfoBar(d.meta);
+  playBtn.disabled = false;
   const unans = Object.keys(INIT.answered).length < INIT.n_pairs;
   statusPair(d.meta, unans ? null : '<b>all pairs answered — ← to revisit</b>');
 }
@@ -222,6 +284,74 @@ function finish() {
   doneEl.onclick = () => doneEl.style.display = 'none';
 }
 
+// ─── playback: animate f0 → f1 on Panel B ───────────────────────────────────
+async function startPlayback() {
+  if (playing || !INIT) return;
+  const p = INIT.pairs[idx];
+  playing = true;
+  playBtn.textContent = '■ Stop';
+  playBtn.disabled = false;
+  infoTrack.textContent = 'fetching sequence…';
+
+  playAbort = new AbortController();
+  try {
+    const r = await fetch(`/api/sequence?f0=${p.f0}&k0=${p.k0}&f1=${p.f1}`,
+                           { signal: playAbort.signal });
+    const d = await r.json();
+    if (!d.sequence || d.sequence.length === 0) {
+      infoTrack.textContent = 'no sequence data';
+      stopPlayback();
+      return;
+    }
+    playSeq = d.sequence;
+    playFrameIdx = 0;
+    infoTrack.textContent = `playing 0/${playSeq.length}`;
+
+    const fps = Math.max(2, Math.min(60, parseInt(playSpeed.value) || 10));
+    const delay = 1000 / fps;
+
+    for (let i = 0; i < playSeq.length && playing; i++) {
+      playFrameIdx = i;
+      const frame = playSeq[i];
+      const pts = b64f32(frame.pts_b64);
+      const hiIdx = frame.hi_idx >= 0 ? frame.hi_idx : 0;
+
+      panelB.loadFrame(pts, hiIdx, frame.peds);
+      panelB.titleEl.textContent = `FRAME B  ${frame.fi} / ${p.f1}` +
+        (frame.track_lost ? '  ⚠ track lost' : '');
+
+      const dz = frame.peds[hiIdx]?.box[5];
+      infoTrack.textContent = `${i+1}/${playSeq.length}  f${frame.fi}` +
+        (dz ? `  h=${(dz*100).toFixed(0)}cm` : '') +
+        (frame.track_lost ? '  ⚠ lost' : '');
+
+      await new Promise((res, reject) => {
+        const t = setTimeout(res, delay);
+        playAbort.signal.addEventListener('abort', () => { clearTimeout(t); reject(); }, { once: true });
+      });
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') infoTrack.textContent = `play error: ${e}`;
+  } finally {
+    if (playing) stopPlayback();
+  }
+}
+
+function stopPlayback() {
+  playing = false;
+  if (playAbort) playAbort.abort();
+  playAbort = null;
+  playSeq = null;
+  playBtn.textContent = '▶ Play A→B';
+  // restore original Frame B
+  if (INIT && idx >= 0 && idx < INIT.n_pairs) show(idx);
+}
+
+playBtn.addEventListener('click', () => {
+  if (playing) stopPlayback();
+  else startPlayback();
+});
+
 // ─── input wiring ────────────────────────────────────────────────────────────
 document.getElementById('b-yes').onclick  = () => verdict('yes');
 document.getElementById('b-no').onclick   = () => verdict('no');
@@ -236,6 +366,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === ' ') { e.preventDefault(); verdict('skip'); }
   else if (e.key === 'q' || e.key === 'Q') finish();
   else if (e.key === 'ArrowLeft') prev();
+  else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); playBtn.click(); }
 });
 
 window.addEventListener('resize', () => { panelA.resize(); panelB.resize(); });
