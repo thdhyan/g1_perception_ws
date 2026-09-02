@@ -240,6 +240,25 @@ class SMPLHMRNode(Node):
         # Precompute face-expanded vertex indices for TRIANGLE_LIST (no rebuild per frame)
         self._face_flat = self._faces.flatten()   # (41328,) index array
 
+        # Pre-allocate Point pools (one pool of 41328 pts per palette slot).
+        # Avoids creating ~41k Point() objects every frame per person.
+        _n_mesh = int(self._face_flat.shape[0])
+        self._mesh_pt_pools = [
+            [Point() for _ in range(_n_mesh)]
+            for _ in range(len(_PALETTE))
+        ]
+        # Joint pool: 24 joints × n_palette
+        self._joint_pt_pools = [
+            [Point() for _ in range(24)]
+            for _ in range(len(_PALETTE))
+        ]
+        # Skeleton edge pool: 2 endpoints × n_edges × n_palette
+        _n_edges = len(_SMPL_EDGES)
+        self._skel_pt_pools = [
+            [Point() for _ in range(_n_edges * 2)]
+            for _ in range(len(_PALETTE))
+        ]
+
         # ── β tracker ─────────────────────────────────────────────────────────
         self._tracker = BetaTracker(
             cos_thresh=self.get_parameter('beta_cos_thresh').value)
@@ -468,45 +487,47 @@ class SMPLHMRNode(Node):
 
     def _mesh_marker(self, idx: int, verts: np.ndarray,
                      faces: np.ndarray, header) -> Marker:
-        """TRIANGLE_LIST: 13776 triangles = 41328 points."""
+        """TRIANGLE_LIST: 13776 triangles = 41328 points.
+        Uses pre-allocated Point pool — no per-frame allocation."""
         m = self._base_marker(idx, 'smpl_mesh', header, Marker.TRIANGLE_LIST)
         m.scale.x = m.scale.y = m.scale.z = 1.0
-        col = _color(idx, alpha=0.65)
-        # All verts share one color — set it once via color, points get default
-        m.color = col
+        m.color = _color(idx, alpha=0.65)
 
-        tri_verts = verts[self._face_flat]   # (41328, 3)
-        for v in tri_verts:
-            p = Point()
-            p.x, p.y, p.z = float(v[0]), float(v[1]), float(v[2])
-            m.points.append(p)
+        tri_verts = verts[self._face_flat]   # (41328, 3) numpy, fast indexing
+        pool = self._mesh_pt_pools[idx % len(_PALETTE)]
+        # Update coordinates in-place — avoids 41k Point() allocations per frame
+        for p, v in zip(pool, tri_verts):
+            p.x = float(v[0]); p.y = float(v[1]); p.z = float(v[2])
+        m.points = pool
         return m
 
     def _joint_marker(self, mid: int, idx: int,
                       joints: np.ndarray, header) -> Marker:
-        """SPHERE_LIST: one sphere per SMPL joint."""
+        """SPHERE_LIST: one sphere per SMPL joint. Pre-allocated pool."""
         m = self._base_marker(mid, 'smpl_joints', header, Marker.SPHERE_LIST)
         m.scale.x = m.scale.y = m.scale.z = 0.05
         m.color = _color(idx, alpha=1.0)
-        for j in joints:
-            p = Point()
-            p.x, p.y, p.z = float(j[0]), float(j[1]), float(j[2])
-            m.points.append(p)
+        pool = self._joint_pt_pools[idx % len(_PALETTE)]
+        for p, j in zip(pool, joints):
+            p.x = float(j[0]); p.y = float(j[1]); p.z = float(j[2])
+        m.points = pool
         return m
 
     def _skel_marker(self, mid: int, idx: int,
                      joints: np.ndarray, header) -> Marker:
-        """LINE_LIST: skeleton edges between SMPL joints."""
+        """LINE_LIST: skeleton edges. Pre-allocated pool (2 pts per edge)."""
         m = self._base_marker(mid, 'smpl_skel', header, Marker.LINE_LIST)
-        m.scale.x = 0.015   # line width
+        m.scale.x = 0.015
         m.color = _color(idx, alpha=1.0)
+        pool = self._skel_pt_pools[idx % len(_PALETTE)]
+        pi = 0
         for a, b in _SMPL_EDGES:
             if a < len(joints) and b < len(joints):
-                pa = Point(x=float(joints[a, 0]), y=float(joints[a, 1]),
-                           z=float(joints[a, 2]))
-                pb = Point(x=float(joints[b, 0]), y=float(joints[b, 1]),
-                           z=float(joints[b, 2]))
-                m.points.extend([pa, pb])
+                pool[pi].x = float(joints[a, 0]); pool[pi].y = float(joints[a, 1]); pool[pi].z = float(joints[a, 2])
+                pi += 1
+                pool[pi].x = float(joints[b, 0]); pool[pi].y = float(joints[b, 1]); pool[pi].z = float(joints[b, 2])
+                pi += 1
+        m.points = pool[:pi]
         return m
 
     def _box_marker(self, idx: int, box7: np.ndarray, header) -> Marker:
