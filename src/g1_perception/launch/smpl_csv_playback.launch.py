@@ -39,7 +39,10 @@ def generate_launch_description():
         DeclareLaunchArgument('score_threshold', default_value='0.25'),
         DeclareLaunchArgument('device', default_value='cuda'),
         DeclareLaunchArgument('smpl_checkpoint', default_value='humanm3'),
-        DeclareLaunchArgument('beta_cos_thresh', default_value='0.85'),
+        DeclareLaunchArgument('beta_cos_thresh', default_value='0.50'),
+        DeclareLaunchArgument('beta_ema_alpha',  default_value='0.20'),
+        DeclareLaunchArgument('beta_max_table',  default_value='30'),
+        DeclareLaunchArgument('beta_debug_sims', default_value='true'),
         DeclareLaunchArgument('max_range', default_value='6.0'),
         DeclareLaunchArgument('rviz', default_value='true'),
     ]
@@ -53,6 +56,9 @@ def generate_launch_description():
     device          = LaunchConfiguration('device')
     smpl_checkpoint = LaunchConfiguration('smpl_checkpoint')
     beta_cos_thresh = LaunchConfiguration('beta_cos_thresh')
+    beta_ema_alpha  = LaunchConfiguration('beta_ema_alpha')
+    beta_max_table  = LaunchConfiguration('beta_max_table')
+    beta_debug_sims = LaunchConfiguration('beta_debug_sims')
     max_range       = LaunchConfiguration('max_range')
 
     # ── 1. CSV playback -> /livox/lidar ─────────────────────────────────────
@@ -105,6 +111,9 @@ def generate_launch_description():
             'min_score':        score_threshold,
             'max_range':        max_range,
             'beta_cos_thresh':  beta_cos_thresh,
+            'beta_ema_alpha':   beta_ema_alpha,
+            'beta_max_table':   beta_max_table,
+            'beta_debug_sims':  beta_debug_sims,
             'detection_topic':  '/g1/detections/livox',
             'cloud_topic':      '/livox/lidar',
             'show_mesh':        True,

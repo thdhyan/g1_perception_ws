@@ -50,7 +50,7 @@ from geometry_msgs.msg import Point
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import PointCloud2
-from std_msgs.msg import ColorRGBA, String
+from std_msgs.msg import ColorRGBA, Int32, String
 from vision_msgs.msg import Detection3DArray
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -147,21 +147,45 @@ class BetaTracker:
 
     Maintains a table:  person_id → β (10-d).
     Each frame: for each detected β, find closest stored β by cosine sim.
-    If sim ≥ threshold → same person.  Otherwise → new person.
+    If sim ≥ threshold → same person (EMA-update stored β).
+    Otherwise → new person.
+
+    Notes on HMR β quality:
+      - LiDAR-HMR β estimates are noisy per-frame (robot-height sensor,
+        sparse crops, no face points). Cosine similarity between same-person
+        frames can be as low as 0.4. Threshold must be permissive.
+      - LRU eviction caps table size so it doesn't grow unboundedly.
+      - debug_sims=True logs max-sim scores to calibrate threshold.
     """
 
-    def __init__(self, cos_thresh: float = 0.85):
-        self.table: dict[int, np.ndarray] = {}   # pid → β (10,)
+    def __init__(self, cos_thresh: float = 0.50, ema_alpha: float = 0.20,
+                 max_table: int = 30, debug_sims: bool = False):
+        self.table: dict[int, np.ndarray] = {}         # pid → β (10,)
+        self._lru: dict[int, int] = {}                 # pid → frame_idx (for eviction)
+        self._frame: int = 0
         self._next_id = 1
         self.cos_thresh = cos_thresh
+        self.ema_alpha = ema_alpha                      # weight on incoming β for EMA
+        self.max_table = max_table                      # evict oldest when full
+        self.debug_sims = debug_sims
+        self._all_ids: set[int] = set()                # cumulative unique IDs
+        self._sim_log: list[float] = []                # recent best-sims (debug)
 
     def _norm(self, v: np.ndarray) -> np.ndarray:
         return v / (np.linalg.norm(v) + 1e-8)
 
+    def _evict_lru(self):
+        """Remove the least-recently-used entry when table is full."""
+        if len(self.table) >= self.max_table:
+            oldest_pid = min(self._lru, key=lambda p: self._lru[p])
+            del self.table[oldest_pid]
+            del self._lru[oldest_pid]
+
     def match(self, betas: np.ndarray) -> list[int]:
         """betas: (K, 10). Returns list of person IDs, one per detection."""
+        self._frame += 1
         ids = []
-        claimed: set[int] = set()   # prevent two detections claiming same person
+        claimed: set[int] = set()
 
         for beta in betas:
             bn = self._norm(beta)
@@ -174,17 +198,47 @@ class BetaTracker:
                 if sim > best_sim:
                     best_sim, best_pid = sim, pid
 
+            if self.debug_sims and best_sim > -1.0:
+                self._sim_log.append(best_sim)
+                if len(self._sim_log) >= 50:
+                    avg = sum(self._sim_log) / len(self._sim_log)
+                    mn  = min(self._sim_log)
+                    mx  = max(self._sim_log)
+                    print(f'[BetaTracker] sim stats over 50 matches: '
+                          f'avg={avg:.3f} min={mn:.3f} max={mx:.3f} '
+                          f'thresh={self.cos_thresh:.2f}', flush=True)
+                    self._sim_log.clear()
+
             if best_pid is not None and best_sim >= self.cos_thresh:
+                # EMA update: blend new β into stored β
+                self.table[best_pid] = (
+                    (1.0 - self.ema_alpha) * self.table[best_pid]
+                    + self.ema_alpha * beta
+                )
+                self._lru[best_pid] = self._frame
                 ids.append(best_pid)
                 claimed.add(best_pid)
             else:
+                self._evict_lru()
                 pid = self._next_id
                 self._next_id += 1
                 self.table[pid] = beta.copy()
+                self._lru[pid] = self._frame
+                self._all_ids.add(pid)
                 ids.append(pid)
                 claimed.add(pid)
 
         return ids
+
+    @property
+    def unique_total(self) -> int:
+        """Total distinct person IDs assigned since node start."""
+        return len(self._all_ids)
+
+    @property
+    def active_count(self) -> int:
+        """IDs currently in the lookup table (≤ max_table)."""
+        return len(self.table)
 
     def get_table(self) -> dict[int, list[float]]:
         """Return {pid: beta_list} for JSON serialisation."""
@@ -210,7 +264,10 @@ class SMPLHMRNode(Node):
         self.declare_parameter('show_mesh',        True)
         self.declare_parameter('show_skeleton',    True)
         self.declare_parameter('show_boxes',       False)
-        self.declare_parameter('beta_cos_thresh', 0.85)  # β match threshold
+        self.declare_parameter('beta_cos_thresh',  0.50)   # β match threshold
+        self.declare_parameter('beta_ema_alpha',   0.20)   # EMA weight on incoming β
+        self.declare_parameter('beta_max_table',   30)     # LRU cap on tracker table
+        self.declare_parameter('beta_debug_sims',  True)   # log sim score stats
 
         ckpt  = self.get_parameter('checkpoint').value
         cfg   = self.get_parameter('config_path').value
@@ -261,14 +318,18 @@ class SMPLHMRNode(Node):
 
         # ── β tracker ─────────────────────────────────────────────────────────
         self._tracker = BetaTracker(
-            cos_thresh=self.get_parameter('beta_cos_thresh').value)
+            cos_thresh=self.get_parameter('beta_cos_thresh').value,
+            ema_alpha=self.get_parameter('beta_ema_alpha').value,
+            max_table=self.get_parameter('beta_max_table').value,
+            debug_sims=self.get_parameter('beta_debug_sims').value)
 
         # ── publishers ────────────────────────────────────────────────────────
-        self._pub_mesh   = self.create_publisher(MarkerArray, '/g1/smpl/mesh',     10)
-        self._pub_joint  = self.create_publisher(MarkerArray, '/g1/smpl/joints',   10)
-        self._pub_skel   = self.create_publisher(MarkerArray, '/g1/smpl/skeleton', 10)
-        self._pub_boxes  = self.create_publisher(MarkerArray, '/g1/smpl/boxes',    10)
-        self._pub_tracks = self.create_publisher(String,      '/g1/smpl/tracks',   10)
+        self._pub_mesh       = self.create_publisher(MarkerArray, '/g1/smpl/mesh',       10)
+        self._pub_joint      = self.create_publisher(MarkerArray, '/g1/smpl/joints',     10)
+        self._pub_skel       = self.create_publisher(MarkerArray, '/g1/smpl/skeleton',   10)
+        self._pub_boxes      = self.create_publisher(MarkerArray, '/g1/smpl/boxes',      10)
+        self._pub_tracks     = self.create_publisher(String,      '/g1/smpl/tracks',     10)
+        self._pub_unique_ids = self.create_publisher(Int32,       '/g1/smpl/unique_ids', 10)
 
         # ── subscribers (time-synced) ─────────────────────────────────────────
         best_effort = QoSProfile(
@@ -414,7 +475,9 @@ class SMPLHMRNode(Node):
                 'beta':   betas[i],
             })
 
-        # ── publish /g1/smpl/tracks (JSON) ────────────────────────────────
+        # ── publish /g1/smpl/tracks (JSON) + /g1/smpl/unique_ids ────────
+        n_active = self._tracker.active_count
+        n_unique = self._tracker.unique_total
         track_msg = String()
         track_msg.data = json.dumps({
             'persons': [
@@ -425,9 +488,19 @@ class SMPLHMRNode(Node):
                  'z': float(p['box7'][2])}
                 for p in per_person
             ],
+            'active_ids': n_active,
+            'unique_ids_total': n_unique,   # cumulative unique IDs in scene
             'table': self._tracker.get_table(),
         })
         self._pub_tracks.publish(track_msg)
+        uid_msg = Int32()
+        uid_msg.data = n_unique
+        self._pub_unique_ids.publish(uid_msg)
+        # Log unique ID count whenever it increases
+        if n_unique > getattr(self, '_last_uid_log', 0):
+            self.get_logger().info(
+                f'[tracker] active={n_active}  unique_total={n_unique}')
+            self._last_uid_log = n_unique
 
         # ── build and publish markers (keyed by person_id → stable color) ─
         mesh_ma  = MarkerArray()
