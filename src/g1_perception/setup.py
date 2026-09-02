@@ -40,6 +40,9 @@ setup(
             "scan_restamper = g1_perception.scan_restamper:main",
             "move_to_xy = g1_perception.move_to_xy:main",
             "cmd_pose_bridge = g1_perception.cmd_pose_bridge:main",
+            "reid_enroll_node = g1_perception.reid_enroll_node:main",
+            "reid_matcher_node = g1_perception.reid_matcher_node:main",
+            "smpl_hmr_node = g1_perception.smpl_hmr_node:main",
         ],
     },
 )

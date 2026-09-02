@@ -72,11 +72,18 @@ class LivoxCSVReader:
         if not os.path.exists(self.file_path):
             raise FileNotFoundError(f"CSV file not found: {self.file_path}")
         self.file_handle = open(self.file_path, "r", buffering=1024 * 1024)
-        # Skip header rows
-        # Line 1: Column names
-        # Line 2: Device serial / metadata
-        self.file_handle.readline()
-        self.file_handle.readline()
+        # Two known schemas:
+        #  - Livox Viewer native export: header row + device-serial/metadata row,
+        #    then fixed columns [.., .., .., .., .., .., ts, x, y, z, reflectivity, ..]
+        #  - our own recorder's export: single header row "x,y,z,reflectivity,timestamp_ns[,frame_idx]"
+        header_line = self.file_handle.readline()
+        header_cols = [c.strip().lower() for c in header_line.strip().split(",")]
+        if {"x", "y", "z"} <= set(header_cols):
+            self._col = {name: i for i, name in enumerate(header_cols)}
+            self._simple_schema = True
+        else:
+            self.file_handle.readline()  # device-serial/metadata row
+            self._simple_schema = False
 
     def reset(self):
         """Reset reader to beginning of data."""
@@ -98,15 +105,23 @@ class LivoxCSVReader:
             if not line_str:
                 continue
             parts = line_str.split(",")
-            if len(parts) < 11:
-                continue
 
             try:
-                ts = int(parts[6])
-                x = float(parts[7])
-                y = float(parts[8])
-                z = float(parts[9])
-                reflectivity = float(parts[10])
+                if self._simple_schema:
+                    c = self._col
+                    x = float(parts[c["x"]])
+                    y = float(parts[c["y"]])
+                    z = float(parts[c["z"]])
+                    reflectivity = float(parts[c["reflectivity"]]) if "reflectivity" in c else 0.0
+                    ts = int(float(parts[c["timestamp_ns"]])) if "timestamp_ns" in c else 0
+                else:
+                    if len(parts) < 11:
+                        continue
+                    ts = int(parts[6])
+                    x = float(parts[7])
+                    y = float(parts[8])
+                    z = float(parts[9])
+                    reflectivity = float(parts[10])
             except (ValueError, IndexError):
                 continue
 
@@ -114,6 +129,14 @@ class LivoxCSVReader:
                 continue
 
             if frame_start_ts is None:
+                frame_start_ts = ts
+
+            # Backwards-timestamp jump (clock reset / corrupt section at end of file):
+            # yield accumulated frame and restart window from this timestamp.
+            if ts < frame_start_ts:
+                if current_frame_points:
+                    yield np.array(current_frame_points, dtype=np.float32), frame_start_ts
+                current_frame_points = []
                 frame_start_ts = ts
 
             if ts - frame_start_ts >= self.time_window_ns:
