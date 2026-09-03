@@ -197,7 +197,34 @@ export LD_LIBRARY_PATH=$HOME/Projects/thesis/g1_perception_ws/.venv/lib/python3.
 
 ---
 
-## 4 — ROS2 build
+## 4 — VoxelNeXt clone + patches (demo laptop only)
+
+VoxelNeXt is gitignored (upstream-only repo). Clone it manually, then apply
+our handwritten patches from the repo:
+
+```bash
+cd ~/Projects/thesis/g1_perception_ws
+git clone https://github.com/JIA-Lab-research/VoxelNeXt.git VoxelNeXt
+cd VoxelNeXt
+python3 setup.py develop          # installs pcdet into venv — run in MAIN session, not subagent
+
+# Apply patches (fixes sparse indoor LiDAR top-k crash + optional Argo2 import)
+git apply ../patches/voxelnext/centernet_utils_topk_sparse_fix.patch
+git apply ../patches/voxelnext/datasets_argo2_optional.patch
+
+# Verify
+git diff --stat
+# expect: 2 files changed, 35 insertions(+), 3 deletions(-)
+```
+
+Patches also on SSD at `/Storage/patches/voxelnext/` — see `patches/voxelnext/README.md`
+for full problem description.
+
+Robot onboard does **not** need VoxelNeXt cloned (no GPU, no detection inference).
+
+---
+
+## 4b — ROS2 build
 
 ### Demo laptop (Humble)
 
@@ -219,9 +246,7 @@ source install/setup.bash
 
 ---
 
----
-
-## 6 — Launch: LiDAR + HMR pipeline
+## 5 — Launch: LiDAR + HMR pipeline
 
 ### Demo laptop (live robot connected)
 
@@ -282,3 +307,50 @@ ros2 run domain_bridge domain_bridge config.yaml
 - **torch.compile** warm-up: first inference batch is slow (kernel compilation). Normal.
 - **TF32**: enabled automatically on RTX Ampere+ (3080/4090/etc). Safe for detection.
 - **LiDAR-HMR ckpt**: `humanm3` checkpoint (~490 MB) — copy from SSD (see §2).
+
+---
+
+## 9 — Future: HMR inference on robot onboard
+
+Currently HMR runs on demo laptop (GPU). Running it on the robot requires:
+
+1. **CUDA on robot**: G1 onboard compute is typically Jetson (Orin/Xavier) or
+   a Jetson-class module. Verify with `nvidia-smi`. If Jetson, CUDA is pre-installed.
+
+2. **Python env on robot** (Foxy ships Python 3.8; LiDAR-HMR needs ≥3.10):
+   ```bash
+   # Option A — conda (recommended for Jetson)
+   conda create -n hmr python=3.10
+   conda activate hmr
+
+   # Option B — deadsnakes PPA (bare Ubuntu)
+   sudo add-apt-repository ppa:deadsnakes/ppa
+   sudo apt install python3.10 python3.10-venv
+   ```
+
+3. **CUDA-matched torch for Jetson** (JetPack 6 → CUDA 12.2, not cu121):
+   ```bash
+   # Replace cu121 wheels with Jetson-native torch from NVIDIA:
+   pip install torch torchvision --index-url https://developer.download.nvidia.com/...
+   # OR use prebuilt Jetson wheels from Qengineering:
+   pip install https://github.com/Qengineering/PyTorch-Jetson-Nano/releases/...
+   ```
+   Adjust `pyproject.toml` `find-links` for Jetson CUDA version before `uv sync`.
+
+4. **torch-scatter / torch-geometric for Jetson**:
+   ```bash
+   # Build from source (no prebuilt PyG Jetson wheels):
+   pip install torch-scatter torch-geometric \
+     -f https://data.pyg.org/whl/torch-<VERSION>+cu<CUDA>.html
+   # If no match: pip install torch-scatter --no-binary torch-scatter
+   ```
+
+5. **colcon build** packages: add `g1_perception` + `livox_detection` to robot build.
+
+6. **SMPL_NEUTRAL.pkl**: already on robot (copy from SSD §2) — no change.
+
+7. **Memory**: LiDAR-HMR humanm3 needs ~1 GB VRAM; Jetson Orin (16 GB unified) handles it.
+   Jetson Xavier (8 GB) is marginal — reduce batch or use `--device cpu` as fallback.
+
+> Short path for testing: SSH into robot, `export ROS_DOMAIN_ID=42`,
+> run `smpl_hmr_node` with `--device cpu` to confirm pipeline, then enable CUDA.
