@@ -1,0 +1,87 @@
+# Dockerfile.hmr — LiDAR-HMR (humanm3) + smpl_hmr_node + reid_server_node
+#
+# HMR requires CUDA. Run on a GPU machine (this laptop, or Jetson Orin with
+# ≥16GB unified memory and JetPack 6).
+#
+# x86_64 (laptop, CUDA 12.1):
+#   docker build -f docker/Dockerfile.hmr -t g1_hmr:jazzy .
+#
+# ARM64 Jetson Orin JetPack 6 (CUDA 12.2, needs ≥16GB):
+#   docker build --build-arg BASE=dustynv/ros:humble-ros-base-l4t-r36.2.0 \
+#                --build-arg TORCH_URL=https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.3.0a0+6ddf5cf85e.nv24.04-cp310-cp310-linux_aarch64.whl \
+#                -f docker/Dockerfile.hmr -t g1_hmr:orin .
+#
+# IMPORTANT — Jetson note:
+#   torch-scatter / torch-geometric have no prebuilt ARM64 wheels on PyPI.
+#   They must be compiled from source; the build can take 30–60 min on Jetson.
+#   Set ARG BUILD_PYG=1 to trigger the from-source build.
+#
+# Run:
+#   docker run --rm --network host --gpus all \
+#     -v /path/to/models:/models:ro \
+#     -e ROS_DOMAIN_ID=42 \
+#     g1_hmr:jazzy
+
+ARG BASE=osrf/ros:jazzy-desktop
+FROM ${BASE}
+
+ARG TORCH_URL=https://download.pytorch.org/whl/cu121/torch-2.3.1%2Bcu121-cp312-cp312-linux_x86_64.whl
+ARG TORCHVISION_URL=https://download.pytorch.org/whl/cu121/torchvision-0.18.1%2Bcu121-cp312-cp312-linux_x86_64.whl
+# Set to 1 on Jetson to build torch-scatter from source (slow but necessary)
+ARG BUILD_PYG=0
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip python3-dev git build-essential cmake \
+    ros-${ROS_DISTRO}-vision-msgs \
+    ros-${ROS_DISTRO}-tf2-ros \
+    ros-${ROS_DISTRO}-tf2-sensor-msgs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Torch
+RUN pip3 install --no-cache-dir "${TORCH_URL}" "${TORCHVISION_URL}"
+
+# PyG: prebuilt x86 wheels from data.pyg.org; from-source on Jetson
+RUN if [ "$BUILD_PYG" = "1" ]; then \
+        pip3 install --no-cache-dir torch-scatter torch-geometric; \
+    else \
+        pip3 install --no-cache-dir \
+            --find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html \
+            torch-scatter torch-geometric; \
+    fi
+
+# Python deps for HMR + SMPL
+RUN pip3 install --no-cache-dir \
+    smplx>=0.1.28 chumpy>=0.70 transforms3d>=0.4.1 \
+    einops>=0.7.0 timm>=0.9.0 scikit-learn>=1.3.0 \
+    yacs>=0.1.8 easydict pyyaml
+
+# LiDAR-HMR submodule
+WORKDIR /ws
+COPY LiDAR-HMR/ LiDAR-HMR/
+
+# g1_perception ROS package (only HMR-related nodes)
+COPY src/g1_perception/ src/g1_perception/
+# SMPL_NEUTRAL.pkl must be provided at build time (licensed file)
+# Pass as: --build-arg SMPL_PKL=<local path> or mount at runtime via -v
+ARG SMPL_PKL=""
+RUN if [ -n "$SMPL_PKL" ]; then \
+        cp "$SMPL_PKL" LiDAR-HMR/body_models/smpl/SMPL_NEUTRAL.pkl; \
+    fi
+
+RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
+    colcon build --symlink-install --packages-select g1_perception && \
+    rm -rf build/
+
+ENV ROS_DOMAIN_ID=42
+COPY docker/entrypoint_ros.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+
+# Default: run smpl_hmr_node only (reid_server can be separate container)
+CMD ["ros2", "run", "g1_perception", "smpl_hmr_node", \
+     "--ros-args", \
+     "-p", "checkpoint:=humanm3", \
+     "-p", "device:=cuda", \
+     "-p", "min_score:=0.25", \
+     "-p", "max_range:=4.0"]
