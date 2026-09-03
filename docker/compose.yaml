@@ -1,0 +1,133 @@
+# docker/compose.yaml — full G1 perception + control stack
+#
+# Prerequisites:
+#   - nvidia-container-toolkit installed
+#   - /Storage SSD mounted (or set BAG_DIR to another path)
+#   - Robot publishing /livox/lidar on ROS_DOMAIN_ID=42
+#   - Checkpoints at ./pt/ and ./LiDAR-HMR/ckpts/
+#   - SMPL_NEUTRAL.pkl at ./LiDAR-HMR/body_models/smpl/SMPL_NEUTRAL.pkl
+#
+# Usage:
+#   # Full stack (perception + control + rviz omitted in Docker)
+#   docker compose -f docker/compose.yaml up
+#
+#   # Perception only (no control, no follower)
+#   docker compose -f docker/compose.yaml up sensors detection hmr reid
+#
+#   # Override bag output (default: /Storage/data/thesis/g1_point_clouds)
+#   BAG_DIR=/my/other/path docker compose -f docker/compose.yaml up
+
+x-ros-common: &ros-common
+  network_mode: host
+  environment:
+    - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-42}
+    - CYCLONEDDS_URI=${CYCLONEDDS_URI:-}
+  restart: unless-stopped
+
+x-gpu-common: &gpu-common
+  <<: *ros-common
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+services:
+  # ── 1. Sensor bridge ─────────────────────────────────────────────────────────
+  sensors:
+    <<: *ros-common
+    image: ghcr.io/thdhyan/g1_perception/sensors:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.sensors
+    command: >
+      ros2 run g1_perception lidar_bridge
+      --ros-args -p source:=real -p target_frame:=pelvis
+
+  # ── 2. VoxelNeXt detection ──────────────────────────────────────────────────
+  detection:
+    <<: *gpu-common
+    image: ghcr.io/thdhyan/g1_perception/detection:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.detection
+    volumes:
+      - ../pt/voxelnext_nuscenes.pth:/checkpoints/voxelnext_nuscenes.pth:ro
+    command: >
+      ros2 run livox_detection livox_detection_node
+      --ros-args
+      -p algorithm:=voxelnext
+      -p checkpoint_path:=/checkpoints/voxelnext_nuscenes.pth
+      -p input_topic:=/livox/mid360/points
+      -p score_threshold:=0.25
+      -p max_range:=4.0
+      -p class_filter:=pedestrian
+      -p target_frame:=pelvis
+    depends_on: [sensors]
+
+  # ── 3. LiDAR-HMR (humanm3) ──────────────────────────────────────────────────
+  hmr:
+    <<: *gpu-common
+    image: ghcr.io/thdhyan/g1_perception/hmr:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.hmr
+    volumes:
+      - ../LiDAR-HMR/ckpts:/ws/LiDAR-HMR/ckpts:ro
+      - ../LiDAR-HMR/body_models:/ws/LiDAR-HMR/body_models:ro
+    command: >
+      ros2 run g1_perception smpl_hmr_node
+      --ros-args
+      -p checkpoint:=humanm3
+      -p device:=cuda
+      -p min_score:=0.25
+      -p max_range:=4.0
+    depends_on: [detection]
+
+  # ── 4. ReID server ───────────────────────────────────────────────────────────
+  reid:
+    <<: *ros-common
+    image: ghcr.io/thdhyan/g1_perception/reid:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.reid
+    command: >
+      ros2 run g1_perception reid_server_node
+      --ros-args
+      -p cos_thresh:=0.85
+      -p auto_enroll:=false
+      -p publish_rate_hz:=10.0
+    depends_on: [hmr]
+
+  # ── 5. Control nodes ────────────────────────────────────────────────────────
+  control:
+    <<: *ros-common
+    image: ghcr.io/thdhyan/g1_perception/control:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.control
+    command: >
+      ros2 run g1_control human_follower_node
+    depends_on: [detection, reid]
+    profiles: [control]   # opt-in: docker compose --profile control up
+
+  # ── 6. Bag recorder (optional) ──────────────────────────────────────────────
+  recorder:
+    <<: *ros-common
+    image: osrf/ros:jazzy-desktop
+    volumes:
+      - ${BAG_DIR:-/Storage/data/thesis/g1_point_clouds}:/bags
+    command: >
+      bash -c "source /opt/ros/jazzy/setup.bash &&
+        ros2 bag record
+          /livox/mid360/points
+          /g1/detections/livox
+          /g1/smpl/tracks
+          /g1/reid/table
+          /g1/reid/matches
+          -o /bags/g1_$(date +%Y%m%d_%H%M%S)
+          --storage sqlite3"
+    depends_on: [hmr, reid]
+    profiles: [record]    # opt-in: docker compose --profile record up

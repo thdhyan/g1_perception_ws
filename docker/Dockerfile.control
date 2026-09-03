@@ -1,0 +1,47 @@
+# Dockerfile.control — velocity + loco control nodes
+# No GPU. Runs on any machine connected to G1 over DDS.
+#
+# Nodes included:
+#   cmd_vel_bridge      — /cmd_vel → Unitree loco API
+#   human_follower_node — follows detected person at target distance
+#   loco_client         — Unitree G1 loco SDK wrapper
+#   move_to_xy          — xy position goal executor
+#   nav_goal_node       — nav2 goal sender
+#   human_selector_node — selects person to follow
+#
+# docker build -f docker/Dockerfile.control -t ghcr.io/thdhyan/g1_perception/control:latest .
+# docker run --rm --network host -e ROS_DOMAIN_ID=42 \
+#   ghcr.io/thdhyan/g1_perception/control:latest
+
+ARG BASE=osrf/ros:jazzy-desktop
+FROM ${BASE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    ros-${ROS_DISTRO}-nav2-msgs \
+    ros-${ROS_DISTRO}-geometry-msgs \
+    ros-${ROS_DISTRO}-vision-msgs \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --no-cache-dir numpy
+
+WORKDIR /ws
+COPY src/g1_perception/ src/g1_perception/
+COPY src/g1_control/ src/g1_control/
+
+RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
+    colcon build --symlink-install \
+      --packages-select g1_perception g1_control && \
+    rm -rf build/
+
+ENV ROS_DOMAIN_ID=42
+COPY docker/entrypoint_ros.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+
+# Default: human follower node (most common demo use-case)
+# Override CMD to run a different control node:
+#   docker run ... ghcr.io/.../control:latest \
+#     ros2 run g1_control cmd_vel_bridge
+CMD ["ros2", "run", "g1_control", "human_follower_node"]

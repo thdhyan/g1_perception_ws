@@ -1,0 +1,34 @@
+# Dockerfile.reid — reid_server_node + reid_enroll_node + reid_matcher_node
+# No GPU required. Pure Python, numpy only.
+#
+# docker build -f docker/Dockerfile.reid -t ghcr.io/thdhyan/g1_perception/reid:latest .
+# docker run --rm --network host -e ROS_DOMAIN_ID=42 \
+#   ghcr.io/thdhyan/g1_perception/reid:latest
+
+ARG BASE=osrf/ros:jazzy-desktop
+FROM ${BASE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --no-cache-dir numpy
+
+WORKDIR /ws
+COPY src/g1_perception/ src/g1_perception/
+
+RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
+    colcon build --symlink-install --packages-select g1_perception && \
+    rm -rf build/
+
+ENV ROS_DOMAIN_ID=42
+COPY docker/entrypoint_ros.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+
+CMD ["ros2", "run", "g1_perception", "reid_server_node", \
+     "--ros-args", \
+     "-p", "cos_thresh:=0.85", \
+     "-p", "auto_enroll:=false", \
+     "-p", "publish_rate_hz:=10.0"]

@@ -1,0 +1,32 @@
+# Dockerfile.sensors — lidar_bridge + scan_restamper
+# No GPU. Runs on any machine (laptop or Jetson).
+#
+# docker build -f docker/Dockerfile.sensors -t ghcr.io/thdhyan/g1_perception/sensors:latest .
+# docker run --rm --network host -e ROS_DOMAIN_ID=42 \
+#   ghcr.io/thdhyan/g1_perception/sensors:latest
+
+ARG BASE=osrf/ros:jazzy-desktop
+FROM ${BASE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    ros-${ROS_DISTRO}-tf2-ros \
+    ros-${ROS_DISTRO}-tf2-sensor-msgs \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /ws
+COPY src/g1_perception/ src/g1_perception/
+
+RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
+    colcon build --symlink-install --packages-select g1_perception && \
+    rm -rf build/
+
+ENV ROS_DOMAIN_ID=42
+COPY docker/entrypoint_ros.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+
+# Bridge /livox/lidar → /livox/mid360/points in pelvis frame
+CMD ["ros2", "run", "g1_perception", "lidar_bridge", \
+     "--ros-args", "-p", "source:=real", "-p", "target_frame:=pelvis"]
