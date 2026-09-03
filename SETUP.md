@@ -112,6 +112,49 @@ cp $SSD/SMPL_NEUTRAL.pkl        $WS/LiDAR-HMR/smplx_models/smpl/
 
 ---
 
+## 2b — Session data via SSD
+
+LiDAR recordings and annotation data live on the **SSD** at:
+
+```
+/Storage/data/
+├── downloads/
+│   ├── 2026-07-29_17-20-14_points.csv    133 MB   short session
+│   ├── 2026-07-29_17-21-48_points.csv    1.6 GB   main session (default for playback)
+│   ├── 20260511_181110/
+│   │   └── rgb_07_joint_positions.csv
+│   ├── results_v2/                        model eval JSONs
+│   ├── compare/                           timing report JSONs
+│   └── *.json                             veo prompts, analysis, camera params
+└── reid_data/
+    ├── identity_map_2026-07-29_17-21-48.json
+    ├── sameperson_2026-07-29_17-21-48.json
+    ├── sameperson_2026-08-05_16-38-40.json
+    ├── tracks_smpl_2026-07-29_17-21-48.json
+    └── train_log.csv
+```
+
+**Connect SSD, then on demo laptop:**
+
+```bash
+WS=~/Projects/thesis/g1_perception_ws
+SSD=/media/$(whoami)/$(ls /media/$(whoami)/ | head -1)/data
+
+# LiDAR session CSVs → Downloads (default playback path)
+mkdir -p ~/Downloads
+cp "$SSD/downloads/2026-07-29_17-20-14_points.csv" ~/Downloads/
+cp "$SSD/downloads/2026-07-29_17-21-48_points.csv" ~/Downloads/
+
+# ReID annotation data
+mkdir -p $WS/reid_data
+cp $SSD/reid_data/*.json $WS/reid_data/
+cp $SSD/reid_data/*.csv  $WS/reid_data/
+```
+
+Robot onboard does **not** need session data (inference only, no playback).
+
+---
+
 ## 3 — Python environment (demo laptop — Humble)
 
 Requires **uv** (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
