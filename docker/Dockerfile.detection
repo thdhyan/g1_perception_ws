@@ -21,11 +21,11 @@
 #     thdhyan/g1-detection:latest
 
 # ── x86 default: CUDA 12.1 devel on Ubuntu 24.04 ───────────────────────────
-ARG CUDA_BASE=nvidia/cuda:12.1.1-cudnn8-devel-ubuntu24.04
+ARG CUDA_BASE=nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04
 FROM ${CUDA_BASE}
 
-ARG TORCH_URL=https://download.pytorch.org/whl/cu121/torch-2.3.1%2Bcu121-cp312-cp312-linux_x86_64.whl
-ARG SPCONV_PKG=spconv-cu121
+ARG TORCH_URL=https://download.pytorch.org/whl/cu124/torch-2.5.1%2Bcu124-cp312-cp312-linux_x86_64.whl
+ARG SPCONV_PKG=spconv-cu124
 
 ENV DEBIAN_FRONTEND=noninteractive \
     CUDA_HOME=/usr/local/cuda \
