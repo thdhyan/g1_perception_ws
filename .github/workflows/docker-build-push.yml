@@ -156,6 +156,7 @@ jobs:
           build-args: |
             BASE=${{ steps.jetson-args.outputs.base }}
             TORCH_URL=${{ steps.jetson-args.outputs.torch_url }}
+            SPCONV_PKG=${{ matrix.jetpack == '5' && 'spconv-cu114' || 'spconv-cu122' }}
             BUILD_PYG=1
           cache-from: type=gha,scope=${{ matrix.name }}-arm64
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}-arm64

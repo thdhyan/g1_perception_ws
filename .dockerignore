@@ -11,8 +11,14 @@ src/g1_isaac_slam/**/__pycache__
 !src/livox_detection
 !src/g1_control
 !VoxelNeXt
+VoxelNeXt/build
+VoxelNeXt/data
+VoxelNeXt/docker
 !patches
 !LiDAR-HMR
+LiDAR-HMR/ckpts
+LiDAR-HMR/.git
+LiDAR-HMR/.DS_Store
 !pt
 **/__pycache__
 **/*.pyc

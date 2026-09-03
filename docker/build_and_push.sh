@@ -23,7 +23,9 @@ if [[ "$PLATFORM" == "linux/arm64" ]]; then
         JETSON_BASE="dustynv/ros:humble-ros-base-l4t-r36.2.0"
         TORCH_URL="https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.3.0a0+6ddf5cf85e.nv24.04-cp310-cp310-linux_aarch64.whl"
     fi
-    EXTRA_ARGS="--build-arg BASE=${JETSON_BASE} --build-arg TORCH_URL=${TORCH_URL} --build-arg BUILD_PYG=1"
+    SPCONV_PKG="spconv-cu122"
+    [[ "$JETPACK" == "5" ]] && SPCONV_PKG="spconv-cu114"
+    EXTRA_ARGS="--build-arg CUDA_BASE=${JETSON_BASE} --build-arg TORCH_URL=${TORCH_URL} --build-arg SPCONV_PKG=${SPCONV_PKG} --build-arg BUILD_PYG=1"
 else
     EXTRA_ARGS=""
 fi

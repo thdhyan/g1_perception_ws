@@ -1,66 +1,74 @@
 # Dockerfile.detection — VoxelNeXt detection node
 #
-# Builds on x86_64 (laptop) or ARM64 (Jetson) — same Dockerfile, different base.
+# GPU base: nvidia/cuda:12.1.1-cudnn8-devel-ubuntu24.04
+# Installs ROS Jazzy from official apt repo, torch cu121, spconv-cu121,
+# and compiles VoxelNeXt/pcdet CUDA ops from source (CUDA_HOME available).
 #
 # x86_64 (laptop, CUDA 12.1):
 #   docker build -f docker/Dockerfile.detection -t g1_detection:jazzy .
 #
 # ARM64 Jetson Orin (JetPack 6, CUDA 12.2):
-#   docker build --build-arg BASE=dustynv/ros:humble-ros-base-l4t-r36.2.0 \
-#                --build-arg TORCH_URL=https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.3.0a0+6ddf5cf85e.nv24.04-cp310-cp310-linux_aarch64.whl \
-#                --build-arg SPCONV_BRANCH=v2.3.6 \
-#                -f docker/Dockerfile.detection -t g1_detection:orin .
+#   docker build \
+#     --build-arg CUDA_BASE=dustynv/ros:humble-ros-base-l4t-r36.2.0 \
+#     --build-arg TORCH_URL=https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.3.0a0+6ddf5cf85e.nv24.04-cp310-cp310-linux_aarch64.whl \
+#     --build-arg SPCONV_PKG=spconv-cu122 \
+#     -f docker/Dockerfile.detection -t g1_detection:orin .
 #
-# ARM64 Jetson Xavier/Orin (JetPack 5, CUDA 11.4):
-#   docker build --build-arg BASE=dustynv/ros:humble-ros-base-l4t-r35.4.1 \
-#                --build-arg TORCH_URL=https://developer.download.nvidia.com/compute/redist/jp/v51/pytorch/torch-2.0.0+nv23.05-cp38-cp38-linux_aarch64.whl \
-#                --build-arg SPCONV_BRANCH=v2.3.6 \
-#                -f docker/Dockerfile.detection -t g1_detection:xavier .
-#
-# Run (any platform):
+# Run:
 #   docker run --rm --network host --gpus all \
 #     -v /path/to/voxelnext_nuscenes.pth:/checkpoints/voxelnext_nuscenes.pth:ro \
 #     -e ROS_DOMAIN_ID=42 \
-#     g1_detection:jazzy
+#     thdhyan/g1-detection:latest
 
-ARG BASE=osrf/ros:jazzy-desktop
-FROM ${BASE}
+# ── x86 default: CUDA 12.1 devel on Ubuntu 24.04 ───────────────────────────
+ARG CUDA_BASE=nvidia/cuda:12.1.1-cudnn8-devel-ubuntu24.04
+FROM ${CUDA_BASE}
 
-# Torch wheel URL — override for Jetson
 ARG TORCH_URL=https://download.pytorch.org/whl/cu121/torch-2.3.1%2Bcu121-cp312-cp312-linux_x86_64.whl
-# spconv tag — v2.3.6 builds on both x86 and Jetson CUDA variants
-ARG SPCONV_BRANCH=v2.3.6
+ARG SPCONV_PKG=spconv-cu121
 
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive \
+    CUDA_HOME=/usr/local/cuda \
+    PATH=/usr/local/cuda/bin:$PATH \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+
+# ── System packages + ROS Jazzy ─────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-pip python3-dev git build-essential cmake \
-    libboost-all-dev libpcl-dev \
-    ros-${ROS_DISTRO}-vision-msgs \
+        curl gnupg lsb-release ca-certificates \
+        python3-pip python3-dev \
+        git build-essential cmake \
+        && rm -rf /var/lib/apt/lists/*
+
+# ROS Jazzy (Ubuntu 24.04 / noble)
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc \
+        | gpg --dearmor -o /usr/share/keyrings/ros-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
+        http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" \
+        > /etc/apt/sources.list.d/ros2.list && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        ros-jazzy-ros-base \
+        ros-jazzy-vision-msgs \
+        python3-colcon-common-extensions \
+        python3-rosdep \
     && rm -rf /var/lib/apt/lists/*
 
-# Torch + torchvision (x86: cu121 wheel; Jetson: override TORCH_URL)
+# ── Python: torch + spconv + pcdet deps ─────────────────────────────────────
 RUN pip3 install --no-cache-dir --break-system-packages "${TORCH_URL}"
+RUN pip3 install --no-cache-dir --break-system-packages "${SPCONV_PKG}"
+RUN pip3 install --no-cache-dir --break-system-packages \
+    numpy llvmlite numba easydict pyyaml scikit-image tqdm SharedArray
 
-# spconv — build from source (works on x86 and ARM64 Jetson)
-RUN git clone --depth 1 --branch ${SPCONV_BRANCH} \
-    https://github.com/traveller59/spconv.git /opt/spconv && \
-    cd /opt/spconv && \
-    SPCONV_DISABLE_JIT=1 pip3 install --no-cache-dir --break-system-packages -e .
-
-# Workspace copy (only the detection package + VoxelNeXt)
+# ── VoxelNeXt / pcdet ───────────────────────────────────────────────────────
 WORKDIR /ws
-COPY src/livox_detection/ src/livox_detection/
 COPY VoxelNeXt/ VoxelNeXt/
-COPY patches/voxelnext/ patches/voxelnext/
 
-# Apply VoxelNeXt patches
-RUN cd VoxelNeXt && \
-    git apply ../patches/voxelnext/centernet_utils_topk_sparse_fix.patch && \
-    git apply ../patches/voxelnext/datasets_argo2_optional.patch && \
-    python3 setup.py develop
+# Compile pcdet CUDA extensions (CUDA_HOME set above)
+RUN cd VoxelNeXt && python3 setup.py develop
 
-# Build ROS package
-RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
+# ── ROS livox_detection package ─────────────────────────────────────────────
+COPY src/livox_detection/ src/livox_detection/
+
+RUN . /opt/ros/jazzy/setup.sh && \
     colcon build --symlink-install --packages-select livox_detection && \
     rm -rf build/
 
