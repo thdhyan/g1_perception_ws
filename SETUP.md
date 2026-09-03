@@ -163,6 +163,14 @@ Requires **uv** (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
 uv sync          # reads uv.lock — exact reproducible install, CUDA 12.1 torch
 ```
 
+`uv sync` installs everything including:
+- `torch 2.3.1+cu121`, `torchvision`, `spconv-cu121`
+- `torch-scatter 2.1.2+pt23cu121` — from `data.pyg.org` (PyG wheel, CUDA-linked)
+- `torch-geometric 2.8.0` — LiDAR-HMR PCT backbone (`point_transformer_v2`)
+- `smplx`, `chumpy`, `timm`, `einops` — SMPL mesh decoding
+
+No manual pip installs needed — `uv.lock` pins the exact PyG CUDA wheel.
+
 For fresh systems without the venv yet:
 
 ```bash
@@ -171,6 +179,9 @@ uv sync
 ```
 
 Activate when running scripts directly (not needed for `ros2 launch`):
+
+> **Robot onboard**: do NOT run `uv sync` — robot only needs ROS2 bringup
+> (no Python venv, no torch, no PyG). HMR inference runs on demo laptop only.
 
 ```bash
 source .venv/bin/activate
