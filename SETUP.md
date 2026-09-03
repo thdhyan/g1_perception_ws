@@ -62,15 +62,52 @@ git submodule update --init --recursive
 
 ---
 
-## 2 — SMPL model file (NEUTRAL.pkl)
+## 2 — Model files via SSD
 
-Not in the upstream LiDAR-HMR repo (SMPL license). Copy from robot or another machine:
+All checkpoints live on the **SSD** at:
+
+```
+/Storage/models/g1_perception_ws/
+├── voxelnext_nuscenes.pth      31 MB   VoxelNeXt detector
+├── voxelkp_waymo.pth         1.3 GB   VoxelKP (backup detector)
+├── lidar_hmr_mesh.pth         491 MB   LiDAR-HMR humanm3 mesh head
+├── prn_pct.pth                 21 MB   LiDAR-HMR humanm3 PCT backbone
+├── SMPL_NEUTRAL.pkl           236 MB   SMPL body model (not in any repo)
+├── reid_model.pt              690 KB   PointNet ReID (triplet-trained)
+└── reid_model_identity.pt     570 KB   PointNet ReID (identity-trained)
+```
+
+**Connect SSD, then on demo laptop:**
 
 ```bash
-scp robot:/path/to/g1_perception_ws/LiDAR-HMR/smplx_models/smpl/SMPL_NEUTRAL.pkl \
-    LiDAR-HMR/smplx_models/smpl/SMPL_NEUTRAL.pkl
-# or from another local path:
-cp /Storage/models/SMPL_NEUTRAL.pkl LiDAR-HMR/smplx_models/smpl/SMPL_NEUTRAL.pkl
+WS=~/Projects/thesis/g1_perception_ws
+SSD=/media/$(whoami)/$(ls /media/$(whoami)/ | head -1)/models/g1_perception_ws
+# ↑ adjust SSD mount path if needed
+
+mkdir -p $WS/pt \
+         $WS/LiDAR-HMR/ckpts/humanm3 \
+         $WS/LiDAR-HMR/smplx_models/smpl \
+         $WS/reid_data
+
+cp $SSD/voxelnext_nuscenes.pth    $WS/pt/
+cp $SSD/voxelkp_waymo.pth         $WS/pt/
+cp $SSD/lidar_hmr_mesh.pth        $WS/LiDAR-HMR/ckpts/humanm3/
+cp $SSD/prn_pct.pth               $WS/LiDAR-HMR/ckpts/humanm3/
+cp $SSD/SMPL_NEUTRAL.pkl          $WS/LiDAR-HMR/smplx_models/smpl/
+cp $SSD/reid_model.pt             $WS/reid_data/model.pt
+cp $SSD/reid_model_identity.pt    $WS/reid_data/model_identity.pt
+```
+
+**On robot onboard** (only needs VoxelNeXt + SMPL if running HMR on robot):
+
+```bash
+WS=~/g1_perception_ws   # adjust to clone path on robot
+SSD=/media/$(whoami)/$(ls /media/$(whoami)/ | head -1)/models/g1_perception_ws
+
+mkdir -p $WS/pt $WS/LiDAR-HMR/smplx_models/smpl
+
+cp $SSD/voxelnext_nuscenes.pth  $WS/pt/
+cp $SSD/SMPL_NEUTRAL.pkl        $WS/LiDAR-HMR/smplx_models/smpl/
 ```
 
 ---
@@ -127,14 +164,6 @@ source install/setup.bash
 ```
 
 ---
-
-## 5 — VoxelNeXt checkpoint
-
-Checkpoint not in repo (large binary). Copy from robot or download:
-
-```bash
-scp robot:/path/to/g1_perception_ws/pt/voxelnext_ped.pth pt/
-```
 
 ---
 
@@ -198,5 +227,4 @@ ros2 run domain_bridge domain_bridge config.yaml
 - **Storage**: large sessions → `/Storage` or `/generalssd`, not `/home` (see memory).
 - **torch.compile** warm-up: first inference batch is slow (kernel compilation). Normal.
 - **TF32**: enabled automatically on RTX Ampere+ (3080/4090/etc). Safe for detection.
-- **LiDAR-HMR ckpt**: `humanm3` checkpoint (~490 MB) lives in `LiDAR-HMR/ckpts/`.
-  Copy from robot if not present: `scp robot:.../LiDAR-HMR/ckpts/ LiDAR-HMR/ckpts/ -r`
+- **LiDAR-HMR ckpt**: `humanm3` checkpoint (~490 MB) — copy from SSD (see §2).
