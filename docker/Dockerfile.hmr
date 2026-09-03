@@ -39,19 +39,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Torch
-RUN pip3 install --no-cache-dir "${TORCH_URL}" "${TORCHVISION_URL}"
+RUN pip3 install --no-cache-dir --break-system-packages "${TORCH_URL}" "${TORCHVISION_URL}"
 
 # PyG: prebuilt x86 wheels from data.pyg.org; from-source on Jetson
 RUN if [ "$BUILD_PYG" = "1" ]; then \
-        pip3 install --no-cache-dir torch-scatter torch-geometric; \
+        pip3 install --no-cache-dir --break-system-packages torch-scatter torch-geometric; \
     else \
-        pip3 install --no-cache-dir \
+        pip3 install --no-cache-dir --break-system-packages \
             --find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html \
             torch-scatter torch-geometric; \
     fi
 
 # Python deps for HMR + SMPL
-RUN pip3 install --no-cache-dir \
+RUN pip3 install --no-cache-dir --break-system-packages \
     smplx>=0.1.28 chumpy>=0.70 transforms3d>=0.4.1 \
     einops>=0.7.0 timm>=0.9.0 scikit-learn>=1.3.0 \
     yacs>=0.1.8 easydict pyyaml
@@ -74,7 +74,7 @@ RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
     rm -rf build/
 
 ENV ROS_DOMAIN_ID=42
-COPY docker/entrypoint_ros.sh /entrypoint.sh
+COPY entrypoint_ros.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 

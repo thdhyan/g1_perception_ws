@@ -38,7 +38,7 @@ services:
   # ── 1. Sensor bridge ─────────────────────────────────────────────────────────
   sensors:
     <<: *ros-common
-    image: ghcr.io/thdhyan/g1_perception/sensors:latest
+    image: thdhyan/g1-sensors:latest
     build:
       context: ..
       dockerfile: docker/Dockerfile.sensors
@@ -49,7 +49,7 @@ services:
   # ── 2. VoxelNeXt detection ──────────────────────────────────────────────────
   detection:
     <<: *gpu-common
-    image: ghcr.io/thdhyan/g1_perception/detection:latest
+    image: thdhyan/g1-detection:latest
     build:
       context: ..
       dockerfile: docker/Dockerfile.detection
@@ -70,7 +70,7 @@ services:
   # ── 3. LiDAR-HMR (humanm3) ──────────────────────────────────────────────────
   hmr:
     <<: *gpu-common
-    image: ghcr.io/thdhyan/g1_perception/hmr:latest
+    image: thdhyan/g1-hmr:latest
     build:
       context: ..
       dockerfile: docker/Dockerfile.hmr
@@ -89,7 +89,7 @@ services:
   # ── 4. ReID server ───────────────────────────────────────────────────────────
   reid:
     <<: *ros-common
-    image: ghcr.io/thdhyan/g1_perception/reid:latest
+    image: thdhyan/g1-reid:latest
     build:
       context: ..
       dockerfile: docker/Dockerfile.reid
@@ -104,7 +104,7 @@ services:
   # ── 5. Control nodes ────────────────────────────────────────────────────────
   control:
     <<: *ros-common
-    image: ghcr.io/thdhyan/g1_perception/control:latest
+    image: thdhyan/g1-control:latest
     build:
       context: ..
       dockerfile: docker/Dockerfile.control

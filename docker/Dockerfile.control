@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-vision-msgs \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir numpy
+RUN pip3 install --no-cache-dir --break-system-packages numpy
 
 WORKDIR /ws
 COPY src/g1_perception/ src/g1_perception/
@@ -36,7 +36,7 @@ RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
     rm -rf build/
 
 ENV ROS_DOMAIN_ID=42
-COPY docker/entrypoint_ros.sh /entrypoint.sh
+COPY entrypoint_ros.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 

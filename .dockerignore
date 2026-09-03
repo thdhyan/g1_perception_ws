@@ -1,6 +1,18 @@
-# Build context for isaac_ros_ws/Dockerfile.g1_isaac_slam is the workspace
-# root (14G) but the image only needs src/g1_isaac_slam. Exclude everything,
-# then re-include just that package.
+# Selective includes — keep context small, re-include per-image needs.
 *
+
+# g1_isaac_slam image
 !src/g1_isaac_slam
 src/g1_isaac_slam/**/__pycache__
+
+# g1 perception/detection/hmr/reid/control images
+!entrypoint_ros.sh
+!src/g1_perception
+!src/livox_detection
+!src/g1_control
+!VoxelNeXt
+!patches
+!LiDAR-HMR
+!pt
+**/__pycache__
+**/*.pyc

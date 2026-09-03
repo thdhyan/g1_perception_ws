@@ -1,0 +1,161 @@
+name: Build & Push Docker Images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docker/**'
+      - 'src/g1_perception/**'
+      - 'src/livox_detection/**'
+      - 'src/g1_control/**'
+      - 'patches/**'
+      - '.github/workflows/docker-build-push.yml'
+  workflow_dispatch:     # manual trigger from GitHub UI
+
+env:
+  REGISTRY: docker.io
+  USERNAME: thdhyan
+
+jobs:
+  # ── No-GPU images (fast, ~5 min each) ──────────────────────────────────────
+  build-lightweight:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: g1-sensors
+            dockerfile: docker/Dockerfile.sensors
+          - name: g1-reid
+            dockerfile: docker/Dockerfile.reid
+          - name: g1-control
+            dockerfile: docker/Dockerfile.control
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ${{ matrix.name }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.USERNAME }}/${{ matrix.name }}:latest
+            ${{ env.USERNAME }}/${{ matrix.name }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # ── GPU images (large, ~20 min each — needs bigger runner) ─────────────────
+  build-gpu:
+    runs-on: ubuntu-latest   # swap to self-hosted GPU runner when available
+    strategy:
+      matrix:
+        include:
+          - name: g1-detection
+            dockerfile: docker/Dockerfile.detection
+          - name: g1-hmr
+            dockerfile: docker/Dockerfile.hmr
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Free disk space (remove unused tools)
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet
+          sudo docker image prune -af
+          df -h
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ${{ matrix.name }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.USERNAME }}/${{ matrix.name }}:latest
+            ${{ env.USERNAME }}/${{ matrix.name }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # ── Jetson ARM64 images (cross-compile, ~40 min) ───────────────────────────
+  build-jetson:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'    # only on main, not every PR
+    strategy:
+      matrix:
+        include:
+          - name: g1-detection
+            tag: orin
+            jetpack: "6"
+          - name: g1-hmr
+            tag: orin
+            jetpack: "6"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet
+          df -h
+
+      - name: Set up QEMU (for ARM64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set Jetson build args
+        id: jetson-args
+        run: |
+          if [ "${{ matrix.jetpack }}" = "6" ]; then
+            echo "base=dustynv/ros:humble-ros-base-l4t-r36.2.0" >> $GITHUB_OUTPUT
+            echo "torch_url=https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.3.0a0+6ddf5cf85e.nv24.04-cp310-cp310-linux_aarch64.whl" >> $GITHUB_OUTPUT
+          else
+            echo "base=dustynv/ros:humble-ros-base-l4t-r35.4.1" >> $GITHUB_OUTPUT
+            echo "torch_url=https://developer.download.nvidia.com/compute/redist/jp/v51/pytorch/torch-2.0.0+nv23.05-cp38-cp38-linux_aarch64.whl" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push ${{ matrix.name }}:${{ matrix.tag }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.${{ matrix.name == 'g1-detection' && 'detection' || 'hmr' }}
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.USERNAME }}/${{ matrix.name }}:${{ matrix.tag }}
+          build-args: |
+            BASE=${{ steps.jetson-args.outputs.base }}
+            TORCH_URL=${{ steps.jetson-args.outputs.torch_url }}
+            BUILD_PYG=1
+          cache-from: type=gha,scope=${{ matrix.name }}-arm64
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}-arm64

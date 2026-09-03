@@ -9,7 +9,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-REGISTRY="${REGISTRY:-ghcr.io/thdhyan/g1_perception}"
+REGISTRY="${REGISTRY:-thdhyan}"
 TAG="${TAG:-latest}"
 PLATFORM="${PLATFORM:-linux/amd64}"
 JETPACK="${JETPACK:-6}"
@@ -32,11 +32,11 @@ BUILD="docker buildx build --platform=${PLATFORM} ${EXTRA_ARGS} --push"
 
 echo "=== Building for ${PLATFORM} tag=${TAG} ==="
 
-$BUILD -f docker/Dockerfile.sensors  -t ${REGISTRY}/sensors:${TAG}   .
-$BUILD -f docker/Dockerfile.detection -t ${REGISTRY}/detection:${TAG} .
-$BUILD -f docker/Dockerfile.hmr      -t ${REGISTRY}/hmr:${TAG}        .
-$BUILD -f docker/Dockerfile.reid     -t ${REGISTRY}/reid:${TAG}        .
-$BUILD -f docker/Dockerfile.control  -t ${REGISTRY}/control:${TAG}     .
+$BUILD -f docker/Dockerfile.sensors  -t ${REGISTRY}/g1-sensors:${TAG}   .
+$BUILD -f docker/Dockerfile.detection -t ${REGISTRY}/g1-detection:${TAG} .
+$BUILD -f docker/Dockerfile.hmr      -t ${REGISTRY}/g1-hmr:${TAG}        .
+$BUILD -f docker/Dockerfile.reid     -t ${REGISTRY}/g1-reid:${TAG}        .
+$BUILD -f docker/Dockerfile.control  -t ${REGISTRY}/g1-control:${TAG}     .
 
 echo "=== All images pushed to ${REGISTRY} with tag ${TAG} ==="
 echo ""

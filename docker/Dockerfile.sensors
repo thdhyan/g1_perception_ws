@@ -23,7 +23,7 @@ RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
     rm -rf build/
 
 ENV ROS_DOMAIN_ID=42
-COPY docker/entrypoint_ros.sh /entrypoint.sh
+COPY entrypoint_ros.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 

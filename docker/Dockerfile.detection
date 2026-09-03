@@ -39,13 +39,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Torch + torchvision (x86: cu121 wheel; Jetson: override TORCH_URL)
-RUN pip3 install --no-cache-dir "${TORCH_URL}"
+RUN pip3 install --no-cache-dir --break-system-packages "${TORCH_URL}"
 
 # spconv — build from source (works on x86 and ARM64 Jetson)
 RUN git clone --depth 1 --branch ${SPCONV_BRANCH} \
     https://github.com/traveller59/spconv.git /opt/spconv && \
     cd /opt/spconv && \
-    SPCONV_DISABLE_JIT=1 pip3 install --no-cache-dir -e .
+    SPCONV_DISABLE_JIT=1 pip3 install --no-cache-dir --break-system-packages -e .
 
 # Workspace copy (only the detection package + VoxelNeXt)
 WORKDIR /ws
@@ -65,7 +65,7 @@ RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
     rm -rf build/
 
 ENV ROS_DOMAIN_ID=42
-COPY docker/entrypoint_ros.sh /entrypoint.sh
+COPY entrypoint_ros.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 
