@@ -29,12 +29,20 @@ const markerObjs = [];   // {tid, mesh, label, t}   (moving person markers)
 const ALL_BBOX = new THREE.Box3();
 let cloud = null, cloudFi = -1;
 let lastCloudShown = null;
+let meshFaces = null, meshAvailable = false;
 
 function b64f32(s) {
   const bin = atob(s);
   const u8 = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
   return new Float32Array(u8.buffer);
+}
+
+function b64i32(s) {
+  const bin = atob(s);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return new Int32Array(u8.buffer);
 }
 
 function resize() {
@@ -280,6 +288,71 @@ function clearCloud() {
   document.getElementById('cloudlabel').textContent = 'cloud: —';
 }
 
+// ─── SMPL mesh (one per track, all rendered simultaneously so multiple
+// people can be watched travelling at once — SMPL-mode sessions only) ───────
+const meshPool = new Map();   // tid -> {mesh, busy, shownKey}
+
+async function initMesh() {
+  const d = await fetch('/api/meshfaces').then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!d) { meshAvailable = false; return; }
+  meshFaces = Uint32Array.from(b64i32(d.faces_b64));   // WebGL index buffers need unsigned
+  meshAvailable = true;
+  for (const t of tracks) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6890 * 3), 3));
+    g.setIndex(new THREE.BufferAttribute(meshFaces, 1));
+    const col = COL[t.st] ?? 0x8B949E;
+    const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.55,
+      side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(g, mat);
+    mesh.visible = false;
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+    meshPool.set(t.tid, { mesh, busy: false, shownKey: null });
+    // hook into the existing focus()-dimming logic (personRefs[].mats)
+    const ref = personRefs.find(r => r.tid === t.tid);
+    if (ref) ref.mats.push(mat);
+  }
+}
+
+function pumpMeshFor(tid, fi) {
+  const st = meshPool.get(tid);
+  if (!st || st.busy) return;
+  const key = tid + ':' + fi;
+  if (key === st.shownKey) return;
+  st.busy = true;
+  fetch(`/api/mesh?tid=${tid}&fi=${fi}`).then(r => r.ok ? r.json() : null).then(d => {
+    st.busy = false;
+    if (d && d.verts_b64) {
+      const v = b64f32(d.verts_b64);
+      st.mesh.geometry.getAttribute('position').array.set(v);
+      st.mesh.geometry.getAttribute('position').needsUpdate = true;
+      st.mesh.geometry.computeVertexNormals();
+      st.mesh.visible = true;
+      st.shownKey = key;
+    } else {
+      st.mesh.visible = false;
+      st.shownKey = null;
+    }
+  }).catch(() => { st.busy = false; });
+}
+
+function updateMeshes(fi) {
+  if (!meshAvailable) return;
+  if (!meshon.checked) { clearAllMeshes(); return; }
+  for (const t of tracks) {
+    const st = meshPool.get(t.tid);
+    if (!st) continue;
+    const p = posAt(t, fi);
+    if (!p) { st.mesh.visible = false; st.shownKey = null; continue; }
+    pumpMeshFor(t.tid, fi);
+  }
+}
+
+function clearAllMeshes() {
+  for (const st of meshPool.values()) { st.mesh.visible = false; st.shownKey = null; }
+}
+
 // ─── table / stats ───────────────────────────────────────────────────────────
 // absence spans = consecutive trusted (or interpolated) points with a gap of
 // 2+ frames (i.e. diff >= SPAN_DIFF, the same condition used for the faint
@@ -361,6 +434,7 @@ function buildStats() {
 // ─── playback ────────────────────────────────────────────────────────────────
 const slider = document.getElementById('frameslider');
 const cbox = document.getElementById('cloudon');
+const meshon = document.getElementById('meshon');
 const playbtn = document.getElementById('playbtn');
 const speedSel = document.getElementById('speed');
 const followEl = document.getElementById('follow');
@@ -384,6 +458,10 @@ slider.addEventListener('input', () => {
 cbox.addEventListener('change', () => {
   playhead = Number(slider.value);
   cbox.checked ? setCloudTarget(playhead) : clearCloud();
+});
+meshon.addEventListener('change', () => {
+  if (meshon.checked) updateMeshes(playhead);
+  else clearAllMeshes();
 });
 speedSel.addEventListener('change', () => { speed = Number(speedSel.value); });
 playbtn.addEventListener('click', () => {
@@ -413,6 +491,7 @@ let lastT = performance.now(), acc = 0;
   }
   controls.update();
   updateMarkers(playhead);
+  updateMeshes(playhead);
   renderer.render(scene, camera);
 })();
 
@@ -442,6 +521,7 @@ window.__reid = {
     buildStats();
     resize();
     fitAll();
+    await initMesh();
     if (cbox.checked) setCloudTarget(0);
   } catch (err) {
     document.getElementById('stats').innerHTML = `Failed to reach server: ${err}`;

@@ -33,7 +33,9 @@ PED_LABEL = 2
 
 STATE = {"lock": threading.RLock(), "npz": None, "frames_dir": None,
          "session": None, "tracks": [], "stats": {}, "params": {},
-         "frame_cache": {}}
+         "frame_cache": {}, "smpl_mode": False,
+         "frame_boxes": None, "frame_beta": None, "frame_theta": None,
+         "mesh_decoder": None}
 
 
 # ── crop extraction (same as mine_reid_crops.py) ──────────────────────────────
@@ -273,6 +275,7 @@ def reid_track(npz, frame_boxes, frame_embs, frame_z,
             "nj":    0,
             "st":    "M" if tr["nm"] > 10 else "OK",
             "pts":   measured,   # only measured points
+            "anchor": tr["anchor"].tolist(),  # EMA-smoothed embedding/beta for this track
         })
 
     out.sort(key=lambda t: -t["len"])
@@ -355,6 +358,84 @@ class Handler(BaseHTTPRequestHandler):
                     S["frame_cache"][fi] = np.ascontiguousarray(pts[:, :3].astype("<f4"))
                 a = S["frame_cache"][fi]
             self._send(200, {"fi": fi, "pts_b64": base64.b64encode(a.tobytes()).decode()})
+        elif path == "/api/meshfaces":
+            S = STATE
+            if not S["smpl_mode"]:
+                self._send(400, {"error": "not in --smpl-mode"})
+                return
+            with S["lock"]:
+                if S["mesh_decoder"] is None:
+                    from mesh_utils import get_decoder
+                    S["mesh_decoder"] = get_decoder()
+                faces = S["mesh_decoder"].faces  # (F, 3) int32
+            self._send(200, {"faces_b64": base64.b64encode(
+                np.ascontiguousarray(faces, dtype="<i4").tobytes()).decode(),
+                             "n_faces": int(faces.shape[0])})
+        elif path == "/api/mesh":
+            S = STATE
+            if not S["smpl_mode"]:
+                self._send(400, {"error": "not in --smpl-mode"})
+                return
+            q = parse_qs(u.query)
+            try:
+                tid = int(q.get("tid", ["0"])[0])
+                fi  = int(q.get("fi", ["0"])[0])
+            except ValueError:
+                self._send(400, {"error": "bad tid/fi"})
+                return
+            track = next((t for t in S["tracks"] if t["tid"] == tid), None)
+            if track is None or not track["pts"]:
+                self._send(404, {"error": "unknown tid"})
+                return
+            # Gather a small temporal window of this track's nearest measured
+            # points and average box pose + theta over them, to smooth out
+            # per-frame box/pose regression jitter (a single frame's box can
+            # jitter in yaw/position and theta can have a noisy regression).
+            pts = sorted(track["pts"], key=lambda p: abs(p[0] - fi))[:5]
+            pts = [p for p in pts if abs(p[0] - fi) <= 15]
+            if not pts:
+                self._send(404, {"error": "no nearby measured frame"})
+                return
+            used_fi = min(pts, key=lambda p: abs(p[0] - fi))[0]
+
+            boxes_l, thetas_l = [], []
+            for p in pts:
+                pfi, tx, ty = p[0], p[1], p[2]
+                boxes_at = S["frame_boxes"][pfi]
+                theta_at = S["frame_theta"][pfi]
+                if boxes_at is None or theta_at is None:
+                    continue
+                d = np.hypot(boxes_at[:, 0] - tx, boxes_at[:, 1] - ty)
+                j = int(np.argmin(d))
+                if d[j] > 0.5:
+                    continue
+                boxes_l.append(boxes_at[j])
+                thetas_l.append(theta_at[j])
+            if not boxes_l:
+                self._send(404, {"error": "no matching detection near track points"})
+                return
+            boxes_arr  = np.array(boxes_l, dtype=np.float64)   # (K, 7)
+            thetas_arr = np.array(thetas_l, dtype=np.float64)  # (K, 72)
+
+            cx, cy, cz = boxes_arr[:, 0].mean(), boxes_arr[:, 1].mean(), boxes_arr[:, 2].mean()
+            yaw_all = boxes_arr[:, 6]
+            yaw = math.atan2(np.sin(yaw_all).mean(), np.cos(yaw_all).mean())  # circular mean
+            theta = thetas_arr.mean(axis=0)                    # elementwise avg (small-motion approx)
+            beta  = np.array(track["anchor"], dtype=np.float64)  # tracker's EMA-smoothed identity beta
+
+            with S["lock"]:
+                if S["mesh_decoder"] is None:
+                    from mesh_utils import get_decoder
+                    S["mesh_decoder"] = get_decoder()
+                dec = S["mesh_decoder"]
+            verts_local, _ = dec.vertices(beta.astype(np.float32), theta.astype(np.float32))  # (1, 6890, 3), root-centred
+            v = verts_local[0]
+            c, s = math.cos(yaw), math.sin(yaw)   # inverse of the -yaw de-yaw used at crop time
+            R = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]], dtype=np.float32)
+            v_world = (R @ v.T).T + np.array([cx, cy, cz], dtype=np.float32)
+            self._send(200, {"tid": tid, "fi": used_fi,
+                             "verts_b64": base64.b64encode(
+                                 np.ascontiguousarray(v_world, dtype="<f4").tobytes()).decode()})
         else:
             self._send(404, b"not found", "text/plain")
 
@@ -366,23 +447,27 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--session",    default="2026-07-29_17-21-48")
     ap.add_argument("--lidar-dir",  default="~/Projects/Thesis/Lidar Data")
-    ap.add_argument("--model",      default="reid_data/model.pt")
+    ap.add_argument("--model",      default="reid_data/model_identity.pt")
     ap.add_argument("--min-score",  type=float, default=0.4)
     ap.add_argument("--short-gap",  type=int,   default=5,
                     help="Frames gap ≤ this uses pos+embed cost; beyond → embed-only re-ID")
-    ap.add_argument("--cos-thresh", type=float, default=0.55,
+    ap.add_argument("--cos-thresh", type=float, default=0.75,
                     help="Cosine similarity threshold for long-gap re-ID (higher = stricter)")
     ap.add_argument("--pos-gate",   type=float, default=2.0,
                     help="Max xy distance (m) to consider a position match at all")
     ap.add_argument("--pos-weight", type=float, default=0.5,
                     help="Position term weight in cost (embed weight = 1 - this)")
-    ap.add_argument("--min-len",    type=int,   default=3,
+    ap.add_argument("--min-len",    type=int,   default=5,
                     help="Suppress tracks with fewer than this many observed frames")
     ap.add_argument("--device",     default="cuda" if _cuda_ok() else "cpu")
     ap.add_argument("--max-range",  type=float, default=5.0,
                     help="Discard detections farther than this many metres from sensor (0=off)")
     ap.add_argument("--recompute",  action="store_true",
                     help="Ignore cached embeddings and recompute from scratch")
+    ap.add_argument("--smpl-mode",  action="store_true",
+                    help="Use SMPL beta (10-d shape) for ReID instead of learned embeddings")
+    ap.add_argument("--smpl-checkpoint", default="humanm3",
+                    help="LiDAR-HMR checkpoint tag used for pre-computed smpl_<tag>_<session>_*.npy files")
     ap.add_argument("--port",       type=int,   default=8767)
     args = ap.parse_args()
 
@@ -394,7 +479,7 @@ def main():
         import sys; sys.exit(f"labels not found: {labels_p}")
     if not os.path.isdir(frames_d):
         import sys; sys.exit(f"frames dir not found: {frames_d}")
-    if not os.path.exists(model_p):
+    if not args.smpl_mode and not os.path.exists(model_p):
         import sys; sys.exit(f"model not found: {model_p}")
 
     S = STATE
@@ -402,8 +487,58 @@ def main():
     S["frames_dir"] = frames_d
     S["npz"]        = np.load(labels_p, allow_pickle=True)
 
+    if args.smpl_mode:
+        # Load pre-computed SMPL beta vectors (produced by extract_smpl.py).
+        # beta slots directly into the embed-cost tracker (dimension-agnostic).
+        smpl_prefix = os.path.join(HERE, "reid_data",
+                                   f"smpl_{args.smpl_checkpoint}_{args.session}")
+        if not os.path.exists(smpl_prefix + "_beta.npy"):
+            # fall back to un-tagged filename (single-checkpoint extraction)
+            smpl_prefix = os.path.join(HERE, "reid_data", f"smpl_{args.session}")
+        if not os.path.exists(smpl_prefix + "_beta.npy"):
+            import sys; sys.exit(f"smpl data not found: {smpl_prefix}_beta.npy "
+                                 f"(run extract_smpl.py --session {args.session} first)")
+        t0 = time.time()
+        print(f"[smpl] Loading pre-computed beta from {smpl_prefix}_*.npy")
+        fi_arr   = np.load(smpl_prefix + "_fi.npy")
+        box_arr  = np.load(smpl_prefix + "_box.npy")
+        beta_arr = np.load(smpl_prefix + "_beta.npy")
+        theta_p  = smpl_prefix + "_theta.npy"
+        theta_arr = np.load(theta_p) if os.path.exists(theta_p) else None
+        z_arr   = box_arr[:, 5] / 2.0   # h/2, same display convention as embed path
+        if args.max_range > 0:
+            r = np.hypot(box_arr[:, 0], box_arr[:, 1])
+            keep = r <= args.max_range
+            fi_arr, box_arr, beta_arr, z_arr = fi_arr[keep], box_arr[keep], beta_arr[keep], z_arr[keep]
+            if theta_arr is not None:
+                theta_arr = theta_arr[keep]
+            print(f"[smpl] Range filter ≤{args.max_range}m: kept {keep.sum()} / {len(keep)}")
+        n_frames = len(S["npz"]["frame_files"])
+        frame_boxes = [None] * n_frames
+        frame_embs  = [None] * n_frames
+        frame_z     = [None] * n_frames
+        frame_theta = [None] * n_frames
+        for fi in np.unique(fi_arr):
+            sel = fi_arr == fi
+            frame_boxes[fi] = box_arr[sel]
+            frame_embs[fi]  = beta_arr[sel]
+            frame_z[fi]     = z_arr[sel]
+            if theta_arr is not None:
+                frame_theta[fi] = theta_arr[sel]
+        n_dets = int(len(fi_arr))
+        print(f"[smpl] {n_dets} detections loaded  ({time.time()-t0:.1f}s)")
+        S["smpl_mode"]   = True
+        S["frame_boxes"] = frame_boxes
+        S["frame_beta"]  = frame_embs
+        S["frame_theta"] = frame_theta
+        _finish_and_serve(args, S, frame_boxes, frame_embs, frame_z)
+        return
+
     # Check for pre-computed embeddings (from precompute script).
-    emb_prefix = os.path.join(HERE, "reid_data", f"emb_{args.session}")
+    # Cache is keyed by session AND model so that switching models never
+    # silently reuses embeddings from a stale checkpoint.
+    model_tag = os.path.splitext(os.path.basename(args.model))[0]
+    emb_prefix = os.path.join(HERE, "reid_data", f"emb_{args.session}_{model_tag}")
     emb_fi_p   = emb_prefix + "_fi.npy"
     if os.path.exists(emb_fi_p) and not args.recompute:
         t0 = time.time()
@@ -440,7 +575,28 @@ def main():
             S["npz"], frames_d, model_p, args.min_score, args.device)
         n_dets = sum(len(b) for b in frame_boxes if b is not None)
         print(f"[embed] {n_dets} ped detections embedded  ({time.time()-t0:.1f}s)")
+        # Persist these embeddings under the model-aware key so subsequent
+        # runs skip recomputation (and cannot mix models).
+        fi_l, box_l, z_l, emb_l = [], [], [], []
+        for fi in range(len(frame_boxes)):
+            if frame_boxes[fi] is None:
+                continue
+            for k in range(len(frame_boxes[fi])):
+                fi_l.append(fi)
+                box_l.append(frame_boxes[fi][k])
+                z_l.append(frame_z[fi][k])
+                emb_l.append(frame_embs[fi][k])
+        if fi_l:
+            np.save(emb_prefix + "_fi.npy",  np.array(fi_l,  dtype=np.int32))
+            np.save(emb_prefix + "_box.npy", np.array(box_l, dtype=np.float32))
+            np.save(emb_prefix + "_z.npy",   np.array(z_l,   dtype=np.float32))
+            np.save(emb_prefix + "_emb.npy", np.array(emb_l, dtype=np.float32))
+            print(f"[embed] Saved cache → {emb_prefix}_*.npy")
 
+    _finish_and_serve(args, S, frame_boxes, frame_embs, frame_z)
+
+
+def _finish_and_serve(args, S, frame_boxes, frame_embs, frame_z):
     print("[track] Running ReID Hungarian tracker…")
     t0 = time.time()
     S["tracks"], S["stats"] = reid_track(
