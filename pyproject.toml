@@ -24,6 +24,14 @@ dependencies = [
     "tqdm>=4.65.0",
     "trimesh>=4.0.0",
     "rich>=13.0.0",
+    # HMR / SMPL mesh pipeline
+    "smplx>=0.1.28",
+    "chumpy>=0.70",
+    "transforms3d>=0.4.1",
+    "einops>=0.7.0",
+    "timm>=0.9.0",
+    "scikit-learn>=1.3.0",
+    "yacs>=0.1.8",
 ]
 
 [tool.uv]
@@ -33,3 +41,6 @@ extra-index-url = [
 find-links = [
     "https://download.pytorch.org/whl/cu121",
 ]
+
+[tool.uv.extra-build-dependencies]
+chumpy = ["pip"]
