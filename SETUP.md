@@ -9,12 +9,48 @@ Quick-start for two targets:
 
 ---
 
-## 1 — Clone
+## 0 — Git commands per device
 
+### First time (fresh clone)
+
+**Demo laptop:**
 ```bash
-git clone --recurse-submodules https://github.com/<your-org>/g1_perception_ws.git
+git clone --recurse-submodules https://github.com/thdhyan/g1_perception_ws.git
 cd g1_perception_ws
 ```
+
+**Robot onboard:**
+```bash
+git clone --recurse-submodules https://github.com/thdhyan/g1_perception_ws.git
+cd g1_perception_ws
+```
+
+Same command — `--recurse-submodules` pulls LiDAR-HMR on both.
+
+---
+
+### Pulling updates (already cloned)
+
+**Demo laptop:**
+```bash
+cd ~/Projects/thesis/g1_perception_ws   # or wherever you cloned
+git pull
+git submodule update --recursive
+```
+
+**Robot onboard:**
+```bash
+cd ~/g1_perception_ws                   # adjust to your path on robot
+git pull
+git submodule update --recursive
+```
+
+`git submodule update --recursive` is required every pull — it advances
+LiDAR-HMR to the pinned commit if the submodule pointer changed.
+
+---
+
+## 1 — Clone (detail)
 
 `--recurse-submodules` pulls **LiDAR-HMR** automatically.
 
