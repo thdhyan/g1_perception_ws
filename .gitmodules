@@ -25,3 +25,6 @@
 [submodule "isaac_ros_ws/src/isaac_ros_nitros"]
 	path = isaac_ros_ws/src/isaac_ros_nitros
 	url = https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nitros.git
+[submodule "LiDAR-HMR"]
+	path = LiDAR-HMR
+	url = https://github.com/soullessrobot/LiDAR-HMR.git

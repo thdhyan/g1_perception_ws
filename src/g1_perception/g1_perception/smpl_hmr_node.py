@@ -159,8 +159,10 @@ class BetaTracker:
     """
 
     def __init__(self, cos_thresh: float = 0.50, ema_alpha: float = 0.20,
-                 max_table: int = 30, debug_sims: bool = False):
+                 max_table: int = 30, debug_sims: bool = False,
+                 use_position_gate: bool = False, pos_gate_radius: float = 2.0):
         self.table: dict[int, np.ndarray] = {}         # pid → β (10,)
+        self._pos: dict[int, np.ndarray] = {}          # pid → (x,y,z) last position
         self._lru: dict[int, int] = {}                 # pid → frame_idx (for eviction)
         self._frame: int = 0
         self._next_id = 1
@@ -168,6 +170,8 @@ class BetaTracker:
         self.ema_alpha = ema_alpha                      # weight on incoming β for EMA
         self.max_table = max_table                      # evict oldest when full
         self.debug_sims = debug_sims
+        self.use_position_gate = use_position_gate     # gate matches by spatial distance
+        self.pos_gate_radius = pos_gate_radius         # max distance (m) to allow match
         self._all_ids: set[int] = set()                # cumulative unique IDs
         self._sim_log: list[float] = []                # recent best-sims (debug)
 
@@ -181,19 +185,36 @@ class BetaTracker:
             del self.table[oldest_pid]
             del self._lru[oldest_pid]
 
-    def match(self, betas: np.ndarray) -> list[int]:
-        """betas: (K, 10). Returns list of person IDs, one per detection."""
+    def match(self, betas: np.ndarray,
+              positions: np.ndarray | None = None) -> list[int]:
+        """Match detections to stored identities.
+
+        Args:
+            betas:     (K, 10) body-shape vectors from HMR.
+            positions: (K, 3) world-frame (x,y,z) centres — required when
+                       use_position_gate=True, ignored otherwise.
+        Returns:
+            list of K person IDs (int), one per detection.
+        """
         self._frame += 1
         ids = []
         claimed: set[int] = set()
 
-        for beta in betas:
-            bn = self._norm(beta)
+        for i, beta in enumerate(betas):
+            bn   = self._norm(beta)
+            pos  = positions[i] if (positions is not None) else None
 
             best_pid, best_sim = None, -1.0
             for pid, stored in self.table.items():
                 if pid in claimed:
                     continue
+
+                # ── optional position gate ────────────────────────────────
+                if self.use_position_gate and pos is not None and pid in self._pos:
+                    dist = float(np.linalg.norm(pos - self._pos[pid]))
+                    if dist > self.pos_gate_radius:
+                        continue   # too far away — not this person
+
                 sim = float(np.dot(bn, self._norm(stored)))
                 if sim > best_sim:
                     best_sim, best_pid = sim, pid
@@ -206,7 +227,9 @@ class BetaTracker:
                     mx  = max(self._sim_log)
                     print(f'[BetaTracker] sim stats over 50 matches: '
                           f'avg={avg:.3f} min={mn:.3f} max={mx:.3f} '
-                          f'thresh={self.cos_thresh:.2f}', flush=True)
+                          f'thresh={self.cos_thresh:.2f} '
+                          f'pos_gate={"on" if self.use_position_gate else "off"}',
+                          flush=True)
                     self._sim_log.clear()
 
             if best_pid is not None and best_sim >= self.cos_thresh:
@@ -215,6 +238,8 @@ class BetaTracker:
                     (1.0 - self.ema_alpha) * self.table[best_pid]
                     + self.ema_alpha * beta
                 )
+                if pos is not None:
+                    self._pos[best_pid] = pos.copy()
                 self._lru[best_pid] = self._frame
                 ids.append(best_pid)
                 claimed.add(best_pid)
@@ -224,6 +249,8 @@ class BetaTracker:
                 self._next_id += 1
                 self.table[pid] = beta.copy()
                 self._lru[pid] = self._frame
+                if pos is not None:
+                    self._pos[pid] = pos.copy()
                 self._all_ids.add(pid)
                 ids.append(pid)
                 claimed.add(pid)
@@ -264,10 +291,12 @@ class SMPLHMRNode(Node):
         self.declare_parameter('show_mesh',        True)
         self.declare_parameter('show_skeleton',    True)
         self.declare_parameter('show_boxes',       False)
-        self.declare_parameter('beta_cos_thresh',  0.50)   # β match threshold
-        self.declare_parameter('beta_ema_alpha',   0.20)   # EMA weight on incoming β
-        self.declare_parameter('beta_max_table',   30)     # LRU cap on tracker table
-        self.declare_parameter('beta_debug_sims',  True)   # log sim score stats
+        self.declare_parameter('beta_cos_thresh',      0.50)   # β match threshold
+        self.declare_parameter('beta_ema_alpha',       0.20)   # EMA weight on incoming β
+        self.declare_parameter('beta_max_table',       30)     # LRU cap on tracker table
+        self.declare_parameter('beta_debug_sims',      True)   # log sim score stats
+        self.declare_parameter('use_position_gate',    False)  # gate matches by 3-D distance
+        self.declare_parameter('pos_gate_radius',      2.0)    # max match distance (m)
 
         ckpt  = self.get_parameter('checkpoint').value
         cfg   = self.get_parameter('config_path').value
@@ -321,7 +350,9 @@ class SMPLHMRNode(Node):
             cos_thresh=self.get_parameter('beta_cos_thresh').value,
             ema_alpha=self.get_parameter('beta_ema_alpha').value,
             max_table=self.get_parameter('beta_max_table').value,
-            debug_sims=self.get_parameter('beta_debug_sims').value)
+            debug_sims=self.get_parameter('beta_debug_sims').value,
+            use_position_gate=self.get_parameter('use_position_gate').value,
+            pos_gate_radius=self.get_parameter('pos_gate_radius').value)
 
         # ── publishers ────────────────────────────────────────────────────────
         self._pub_mesh       = self.create_publisher(MarkerArray, '/g1/smpl/mesh',       10)
@@ -391,8 +422,18 @@ class SMPLHMRNode(Node):
         else:
             self.get_logger().warn(f'  weights not found: {weights_path} — running with random init!')
 
-        model.to(torch.device(self._device))
-        model.eval()
+        dev = torch.device(self._device)
+        model.to(dev).eval()
+
+        # ── GPU throughput: TF32 + cudnn autotuning + AMP ──────────────────────
+        if dev.type == 'cuda':
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32       = True
+            torch.backends.cudnn.benchmark        = True
+            self._use_amp = True
+            self.get_logger().info('HMR: TF32 + AMP autocast enabled')
+        else:
+            self._use_amp = False
 
         # keep torch ref to avoid import overhead later
         self._torch = torch
@@ -449,14 +490,17 @@ class SMPLHMRNode(Node):
         # ── HMR inference (serialized) ────────────────────────────────────
         with self._infer_lock:
             torch = self._torch
-            with torch.no_grad():
+            amp_ctx = (torch.cuda.amp.autocast() if self._use_amp
+                       else torch.no_grad())
+            with torch.no_grad(), amp_ctx:
                 pcd = torch.from_numpy(crops).to(self._device)
                 out = self._extractor(pcd)
-            betas  = out['pose_beta'].cpu().numpy()   # (B, 10)
-            thetas = out['pose_theta'].cpu().numpy()  # (B, 72)
+            betas  = out['pose_beta'].float().cpu().numpy()   # (B, 10)
+            thetas = out['pose_theta'].float().cpu().numpy()  # (B, 72)
 
         # ── β tracker: assign stable person IDs ─────────────────────────
-        person_ids = self._tracker.match(betas)  # list[int], one per detection
+        positions = np.array([[b[0], b[1], b[2]] for b in boxes7], dtype=np.float32)
+        person_ids = self._tracker.match(betas, positions=positions)
 
         # ── SMPL forward + world-space transform ──────────────────────────
         per_person: list[dict] = []   # [{pid, verts, joints, box7}, ...]

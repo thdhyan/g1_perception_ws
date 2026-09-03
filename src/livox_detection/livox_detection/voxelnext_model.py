@@ -187,10 +187,32 @@ class VoxelNeXtBackend:
         self.model.load_params_from_file(filename=str(ckpt_path), logger=self.logger, to_cpu=True)
         self.model.to(self.device).eval()
 
+        # ── GPU throughput flags (RTX Ampere+: TF32 ≈ 2× free, cudnn autotuning) ─
+        if self.device.type == 'cuda':
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32       = True
+            torch.backends.cudnn.benchmark        = True   # auto-tune kernels on first run
+            self.logger.info("TF32 + cudnn.benchmark enabled (RTX Ampere+)")
+
+        # ── torch.compile (Inductor) — ~1.3-2× on dense heads; skipped if unsupported ─
+        self._use_amp = self.device.type == 'cuda'
+        try:
+            # avoid `import torch._dynamo` here — it would make Python treat
+            # `torch` as a local variable throughout load(), breaking the earlier
+            # torch.backends.* calls above. Use getattr path instead.
+            dynamo = getattr(torch, '_dynamo', None)
+            if dynamo is not None:
+                dynamo.config.suppress_errors = True
+            self.model = torch.compile(self.model, mode='reduce-overhead',
+                                       fullgraph=False, dynamic=True)
+            self.logger.info("torch.compile(mode='reduce-overhead') applied to VoxelNeXt")
+        except Exception as e:
+            self.logger.warning(f"torch.compile skipped: {e}")
+
         self.logger.info(
             f"VoxelNeXt loaded from {ckpt_path} "
             f"(config: {cfg_path.name}, device: {self.device}, "
-            f"threshold: {self.score_threshold})"
+            f"AMP={'on' if self._use_amp else 'off'}, threshold: {self.score_threshold})"
         )
 
     def infer(self, points: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -238,8 +260,10 @@ class VoxelNeXtBackend:
             data_dict = self.dataset.collate_batch([data_dict])
             load_data_to_gpu(data_dict)
 
-            # 4. Forward pass
-            with torch.no_grad():
+            # 4. Forward pass (AMP autocast: FP16 matmuls where safe)
+            ctx = (torch.cuda.amp.autocast() if getattr(self, '_use_amp', False)
+                   else torch.no_grad())
+            with torch.no_grad(), ctx:
                 pred_dicts, _ = self.model(data_dict)
         except Exception as e:
             self.logger.error(f"VoxelNeXt forward pass failed: {e}")
