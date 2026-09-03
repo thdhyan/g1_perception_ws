@@ -43,6 +43,7 @@ setup(
             "reid_enroll_node = g1_perception.reid_enroll_node:main",
             "reid_matcher_node = g1_perception.reid_matcher_node:main",
             "smpl_hmr_node = g1_perception.smpl_hmr_node:main",
+            "reid_server_node = g1_perception.reid_server_node:main",
         ],
     },
 )
