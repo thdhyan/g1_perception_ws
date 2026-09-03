@@ -430,10 +430,15 @@ class SMPLHMRNode(Node):
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32       = True
             torch.backends.cudnn.benchmark        = True
-            self._use_amp = True
-            self.get_logger().info('HMR: TF32 + AMP autocast enabled')
+            # AMP disabled: graphormer sparse ops crash with both fp16 and bf16
+            # ('addmm_sparse_cuda' not implemented for 'Half'/'BFloat16').
+            # TF32 + cudnn.benchmark still give meaningful speedup without AMP.
+            self._use_amp = False
+            self._amp_dtype = None
+            self.get_logger().info('HMR: TF32 + cudnn.benchmark enabled (AMP off — sparse compat)')
         else:
             self._use_amp = False
+            self._amp_dtype = None
 
         # keep torch ref to avoid import overhead later
         self._torch = torch
@@ -490,8 +495,8 @@ class SMPLHMRNode(Node):
         # ── HMR inference (serialized) ────────────────────────────────────
         with self._infer_lock:
             torch = self._torch
-            amp_ctx = (torch.cuda.amp.autocast() if self._use_amp
-                       else torch.no_grad())
+            amp_ctx = (torch.cuda.amp.autocast(dtype=self._amp_dtype)
+                       if self._use_amp else torch.no_grad())
             with torch.no_grad(), amp_ctx:
                 pcd = torch.from_numpy(crops).to(self._device)
                 out = self._extractor(pcd)

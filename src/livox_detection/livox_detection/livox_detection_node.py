@@ -128,9 +128,9 @@ class LivoxDetectionNode(Node):
         self.backend = None
         self._init_backend()
 
-        # Sensor QoS matching robot publisher (RELIABLE)
+        # BEST_EFFORT matches lidar_bridge and livox_ros_driver2 publishers
         sensor_qos = QoSProfile(
-            reliability=QoSReliabilityPolicy.RELIABLE,
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
             history=QoSHistoryPolicy.KEEP_LAST,
             depth=10,
             durability=QoSDurabilityPolicy.VOLATILE,
