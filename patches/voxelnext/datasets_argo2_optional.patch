@@ -1,0 +1,28 @@
+diff --git a/pcdet/datasets/__init__.py b/pcdet/datasets/__init__.py
+index 8eb619a..0b78471 100644
+--- a/pcdet/datasets/__init__.py
++++ b/pcdet/datasets/__init__.py
+@@ -12,7 +12,10 @@ from .waymo.waymo_dataset import WaymoDataset
+ from .pandaset.pandaset_dataset import PandasetDataset
+ from .lyft.lyft_dataset import LyftDataset
+ from .once.once_dataset import ONCEDataset
+-from .argo2.argo2_dataset import Argo2Dataset
++try:
++    from .argo2.argo2_dataset import Argo2Dataset
++except ImportError:
++    Argo2Dataset = None
+ from .custom.custom_dataset import CustomDataset
+ 
+ __all__ = {
+@@ -23,9 +26,10 @@ __all__ = {
+     'PandasetDataset': PandasetDataset,
+     'LyftDataset': LyftDataset,
+     'ONCEDataset': ONCEDataset,
+-    'Argo2Dataset': Argo2Dataset,
+     'CustomDataset': CustomDataset
+ }
++if Argo2Dataset is not None:
++    __all__['Argo2Dataset'] = Argo2Dataset
+ 
+ 
+ class DistributedSampler(_DistributedSampler):

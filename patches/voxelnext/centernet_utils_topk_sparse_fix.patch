@@ -1,0 +1,42 @@
+diff --git a/pcdet/models/model_utils/centernet_utils.py b/pcdet/models/model_utils/centernet_utils.py
+index 505d95b..f820cfb 100644
+--- a/pcdet/models/model_utils/centernet_utils.py
++++ b/pcdet/models/model_utils/centernet_utils.py
+@@ -261,8 +261,36 @@ def _topk_1d(scores, batch_size, batch_idx, obj, K=40, nuscenes=False):
+             topk_scores, topk_inds = torch.topk(score, min(K, score.shape[-1]))
+             topk_score, topk_ind = torch.topk(topk_scores.view(-1), min(K, topk_scores.view(-1).shape[-1]))
+             #topk_score, topk_ind = torch.topk(score.reshape(-1), K)
++            # ── (a) class ids from the REAL (unpadded) flat indices ──────────
++            # flat layout of topk_scores is (C, k): class = flat_idx // k,
++            # where k = min(K, N_vox) candidates per class.
++            _block = topk_scores.shape[-1]
++            _topk_classes = (topk_ind // _block).int()
++            # ── (b) sparse-frame fix: pad to K if fewer than K candidates ────
++            # Sparse indoor LiDAR can have < K active voxels; without padding
++            # the downstream scores.view(batch_size, K) raises RuntimeError.
++            # Padded entries carry -inf scores → dropped by score_thresh filter.
++            if topk_score.shape[-1] < K:
++                _pad = K - topk_score.shape[-1]
++                _pad_i = int(topk_ind[-1].item())
++                topk_score = torch.cat([
++                    topk_score,
++                    torch.full((_pad,), float('-inf'), dtype=topk_score.dtype,
++                               device=topk_score.device)
++                ])
++                topk_ind = torch.cat([
++                    topk_ind,
++                    torch.full((_pad,), _pad_i, dtype=topk_ind.dtype,
++                               device=topk_ind.device)
++                ])
++                _pad_classes = torch.zeros(_pad, dtype=_topk_classes.dtype,
++                                           device=_topk_classes.device)
++                _topk_classes = torch.cat([_topk_classes, _pad_classes])
+ 
+-        topk_classes = (topk_ind // K).int()
++        if obj.shape[-1] == 1 and not nuscenes:
++            topk_classes = (topk_ind // K).int()
++        else:
++            topk_classes = _topk_classes
+         topk_inds = topk_inds.view(-1).gather(0, topk_ind)
+         #print('topk_inds', topk_inds)
+ 
