@@ -1,0 +1,28 @@
+diff --git a/models/pose_mesh_net.py b/models/pose_mesh_net.py
+index ee342aa..2eadbe1 100644
+--- a/models/pose_mesh_net.py
++++ b/models/pose_mesh_net.py
+@@ -13,11 +13,20 @@ from .graphormer.modeling_graphormer import Graphormer, GraphConvolution, GraphR
+ import copy
+ from .smpl_param_regressor import SMPLParamRegressor
+ from .pct_config import pct_config
+-from .smpl_hybrik.regressor import Hybrik
++try:
++    from .smpl_hybrik.regressor import Hybrik
++except ImportError:
++    Hybrik = None
+ import pickle
+ from .smpl_hybrik.SMPL import SMPL_layer
+-from .VoteHMR import GlobalParamRegressor, LocalParamRegressor
+-from .LiDARCap.modules.regressor import Regressor
++try:
++    from .VoteHMR import GlobalParamRegressor, LocalParamRegressor
++except ImportError:
++    GlobalParamRegressor = LocalParamRegressor = None
++try:
++    from .LiDARCap.modules.regressor import Regressor
++except ImportError:
++    Regressor = None
+ import smplx
+ 
+ class pose_mesh_net(nn.Module):
