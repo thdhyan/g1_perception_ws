@@ -30,7 +30,10 @@ ARG SPCONV_PKG=spconv-cu124
 ENV DEBIAN_FRONTEND=noninteractive \
     CUDA_HOME=/usr/local/cuda \
     PATH=/usr/local/cuda/bin:$PATH \
-    LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH \
+    # Volta→Hopper native + PTX for forward compat (Blackwell / RTX 5090)
+    # sm_100 (Blackwell) requires CUDA 12.8+ driver but PTX JIT-compiles on first run
+    TORCH_CUDA_ARCH_LIST="7.0;7.5;8.0;8.6;8.7;8.9;9.0+PTX"
 
 # ── System packages + ROS Jazzy ─────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -55,6 +58,8 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc \
 # ── Python: torch + spconv + pcdet deps ─────────────────────────────────────
 RUN pip3 install --no-cache-dir --break-system-packages "${TORCH_URL}"
 RUN pip3 install --no-cache-dir --break-system-packages "${SPCONV_PKG}"
+# Purge apt numpy (RECORD-less deb install blocks pip upgrade) then reinstall
+RUN apt-get remove -y python3-numpy 2>/dev/null || true
 RUN pip3 install --no-cache-dir --break-system-packages \
     numpy llvmlite numba easydict pyyaml scikit-image tqdm SharedArray
 
