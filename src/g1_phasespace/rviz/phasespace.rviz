@@ -1,0 +1,74 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid (1 m)
+      Enabled: true
+      Reference Frame: phasespace
+      Cell Size: 1
+      Plane Cell Count: 14
+      Offset:
+        X: 2
+        Y: 1
+        Z: 0
+    - Class: rviz_default_plugins/Axes
+      Name: PhaseSpace origin
+      Enabled: true
+      Reference Frame: phasespace
+      Length: 0.5
+      Radius: 0.03
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Floor, cameras
+      Enabled: true
+      Topic:
+        Value: /phasespace_world
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+    - Class: rviz_default_plugins/MarkerArray
+      Name: LEDs
+      Enabled: true
+      Topic:
+        Value: /phasespace_leds
+    - Class: rviz_default_plugins/MarkerArray
+      Name: SMPL-X humans
+      Enabled: true
+      Topic:
+        Value: /phasespace/bodies
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+    - Class: rviz_default_plugins/MarkerArray
+      Name: G1 head
+      Enabled: true
+      Topic:
+        Value: /phasespace/robot
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+    - Class: rviz_default_plugins/TF
+      Name: TF (cameras, LED groups, LEDs, rigids)
+      Enabled: true
+      Show Names: true
+      Show Arrows: false
+      Marker Scale: 0.6
+  Global Options:
+    Fixed Frame: phasespace
+    Background Color: 48; 48; 48
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 14
+      Focal Point:
+        X: 2
+        Y: 1
+        Z: 0.5
+      Pitch: 0.7
+      Yaw: 3.9
+Window Geometry:
+  Width: 1400
+  Height: 900

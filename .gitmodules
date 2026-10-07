@@ -28,3 +28,6 @@
 [submodule "LiDAR-HMR"]
 	path = LiDAR-HMR
 	url = https://github.com/soullessrobot/LiDAR-HMR.git
+[submodule "src/Phasespace"]
+	path = src/Phasespace
+	url = https://github.com/thdhyan/Phasespace
