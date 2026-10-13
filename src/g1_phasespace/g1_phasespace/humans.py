@@ -1,7 +1,9 @@
 """PhaseSpace LED groups -> SMPL-X humans for RViz and the G1 planner.
 
 Every LED group from phasespace_ros2 (/phasespace/groups) except the robot
-group is a person wearing a hat: the group TF is the head centre.
+group is a person wearing a hat: the group TF is the head centre. When the
+mocap labeler (/mocap/agents) names a group, its frame (<name>, carrying the
+labeler's yaw) is used instead, so bodies face the heading set there.
 
 Publishes:
   /phasespace/bodies   MarkerArray (latched)  SMPL-X neutral body per human, frame-locked to its group TF
@@ -53,6 +55,8 @@ class Humans(Node):
         self.bodies_pub = self.create_publisher(MarkerArray, "/phasespace/bodies", LATCHED)
         self.humans_pub = self.create_publisher(String, "/phasespace/humans", LATCHED)
         self.create_subscription(String, "/phasespace/groups", self.on_groups, LATCHED)
+        self.create_subscription(String, "/mocap/agents", self.on_agents, 10)
+        self.labels = {}  # group -> labeler frame name
         self.tf = Buffer()
         TransformListener(self.tf, self)
 
@@ -62,7 +66,7 @@ class Humans(Node):
             self.get_logger().info(f"SMPL-X body from {smplx}")
         else:
             self.get_logger().warn(f"No SMPL-X model at {smplx}; bodies disabled, /phasespace/humans still published")
-        self.frame, self.humans, self.shown = "phasespace", {}, set()
+        self.frame, self.humans, self.shown = "phasespace", {}, {}  # shown: group -> frame its body is locked to
         self.create_timer(1.0 / rate, self.tick)
 
     def on_groups(self, msg):
@@ -71,33 +75,45 @@ class Humans(Node):
         self.humans = {n: g["oriented"] for n, g in d["groups"].items() if n != self.robot_group}
         self.get_logger().info(f"Humans: {sorted(self.humans)} (robot: {self.robot_group})")
 
+    def on_agents(self, msg):
+        self.labels = {a["group"]: a["name"] for a in json.loads(msg.data)["agents"] if a["yaw_deg"] is not None}
+
+    def fresh_tf(self, frames, now):
+        for f in frames:  # labeler frame first; group frame if the labeler is not running
+            try:
+                tf = self.tf.lookup_transform(self.frame, f, Time())
+            except Exception:
+                continue
+            if now - Time.from_msg(tf.header.stamp) <= self.max_age:
+                return f, tf
+        return None, None
+
     def tick(self):
         now = self.get_clock().now()
         humans = []
         for name, oriented in self.humans.items():
-            try:
-                tf = self.tf.lookup_transform(self.frame, name, Time())
-            except Exception:
-                continue
-            if now - Time.from_msg(tf.header.stamp) > self.max_age:
+            label = self.labels.get(name)
+            frame, tf = self.fresh_tf([label, name] if label else [name], now)
+            if tf is None:
                 continue  # hat out of view
+            oriented = oriented or frame == label
             p, q = tf.transform.translation, tf.transform.rotation
             heading = math.degrees(math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z)))
-            humans.append({"name": name, "x": round(p.x, 3), "y": round(p.y, 3), "z": round(p.z, 3),
+            humans.append({"name": name, "frame": frame, "x": round(p.x, 3), "y": round(p.y, 3), "z": round(p.z, 3),
                            "heading_deg": round(heading, 1) if oriented else None})
+        visible = {h["name"]: h.pop("frame") for h in humans}
         self.humans_pub.publish(String(data=json.dumps({"frame": self.frame, "humans": humans})))
 
         # bodies only once their TF exists, else RViz drops the latched markers
-        visible = {h["name"] for h in humans}
-        if self.smpl is not None and not visible <= self.shown:
-            self.shown |= visible
+        if self.smpl is not None and not visible.items() <= self.shown.items():
+            self.shown.update(visible)
             self.publish_bodies()
 
     def publish_bodies(self):
         v, f = self.smpl
         points = [Point(x=float(p[0]), y=float(p[1]), z=float(p[2])) for p in v[f.reshape(-1)]]
-        array = MarkerArray()
-        for i, name in enumerate(sorted(self.shown)):
+        array = MarkerArray(markers=[Marker(action=Marker.DELETEALL)])  # drop bodies locked to a replaced frame
+        for i, name in enumerate(sorted(self.shown.values())):
             mk = Marker(ns="smplx", id=i, type=Marker.TRIANGLE_LIST, action=Marker.ADD)
             mk.header.frame_id = name
             mk.frame_locked = True

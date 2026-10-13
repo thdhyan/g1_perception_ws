@@ -3,12 +3,18 @@
 The robot's LED group (default dhyan-hat-3) sits on the G1 head. Its group TF
 from phasespace_ros2 is the LED centroid (rotated once a reference layout is
 captured); `offset` (metres, in the hat frame) moves that to the head centre.
+When the mocap labeler (/mocap/agents) names the robot group, the head frame is
+re-parented onto the labeler's frame, so it carries the labeler's yaw. It is
+sent on /tf every tick: Jazzy's StaticTransformBroadcaster drops any later
+transform for a child frame it has already sent, so a static one cannot re-parent.
 
 Publishes:
-  /tf_static              <robot_group> -> <head_frame> (offset, no rotation)
+  /tf                     <robot_group or labeler name> -> <head_frame> (offset, no rotation)
   /phasespace/robot_head  PoseStamped of <head_frame> in the PhaseSpace frame
   /phasespace/robot       MarkerArray (latched): head box + facing arrow, frame-locked to <head_frame>
 """
+
+import json
 
 import rclpy
 from geometry_msgs.msg import PoseStamped, TransformStamped
@@ -17,10 +23,18 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from rclpy.time import Time
-from tf2_ros import Buffer, StaticTransformBroadcaster, TransformListener
+from std_msgs.msg import String
+from tf2_ros import Buffer, TransformBroadcaster, TransformListener
 from visualization_msgs.msg import Marker, MarkerArray
 
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+
+
+def rotate(q, v):
+    """Rotate vector v by unit quaternion q (geometry_msgs Quaternion)."""
+    u = (q.x, q.y, q.z)
+    t = [2 * (u[1] * v[2] - u[2] * v[1]), 2 * (u[2] * v[0] - u[0] * v[2]), 2 * (u[0] * v[1] - u[1] * v[0])]
+    return [v[i] + q.w * t[i] + (u[(i + 1) % 3] * t[(i + 2) % 3] - u[(i + 2) % 3] * t[(i + 1) % 3]) for i in range(3)]
 
 
 class RobotHead(Node):
@@ -29,18 +43,14 @@ class RobotHead(Node):
         self.group = self.declare_parameter("robot_group", "dhyan-hat-3").value
         self.head = self.declare_parameter("head_frame", "ps_robot_head").value
         self.frame = self.declare_parameter("world_frame", "phasespace").value
-        offset = self.declare_parameter("offset", [0.0, 0.0, 0.0]).value
+        self.offset = self.declare_parameter("offset", [0.0, 0.0, 0.0]).value
         rate = self.declare_parameter("rate", 30.0).value
         self.max_age = Duration(seconds=self.declare_parameter("max_age", 0.5).value)
 
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = self.group
-        t.child_frame_id = self.head
-        t.transform.translation.x, t.transform.translation.y, t.transform.translation.z = (float(v) for v in offset)
-        t.transform.rotation.w = 1.0
-        self.static_tf = StaticTransformBroadcaster(self)
-        self.static_tf.sendTransform(t)
+        self.tf_pub = TransformBroadcaster(self)
+        self.parent = None
+        self.set_parent(self.group)
+        self.create_subscription(String, "/mocap/agents", self.on_agents, 10)
 
         self.pose_pub = self.create_publisher(PoseStamped, "/phasespace/robot_head", 10)
         self.marker_pub = self.create_publisher(MarkerArray, "/phasespace/robot", LATCHED)
@@ -48,20 +58,39 @@ class RobotHead(Node):
         TransformListener(self.tf, self)
         self.shown = False
         self.create_timer(1.0 / rate, self.tick)
-        self.get_logger().info(f"Robot head: {self.group} -> {self.head}, offset {list(offset)} m")
+        self.get_logger().info(f"Robot head: {self.group} -> {self.head}, offset {list(self.offset)} m")
+
+    def set_parent(self, parent):
+        if parent == self.parent:
+            return
+        self.parent = parent
+        self.get_logger().info(f"Robot head parent: {parent}")
+
+    def on_agents(self, msg):
+        for a in json.loads(msg.data)["agents"]:
+            if a["group"] == self.group:
+                self.set_parent(a["name"] if a["yaw_deg"] is not None else self.group)
 
     def tick(self):
         try:
-            tf = self.tf.lookup_transform(self.frame, self.head, Time())
+            tf = self.tf.lookup_transform(self.frame, self.parent, Time())
         except Exception:
             return
         if self.get_clock().now() - Time.from_msg(tf.header.stamp) > self.max_age:
             return  # hat out of view
+        t = TransformStamped()
+        t.header.stamp = tf.header.stamp
+        t.header.frame_id = self.parent
+        t.child_frame_id = self.head
+        t.transform.translation.x, t.transform.translation.y, t.transform.translation.z = (float(v) for v in self.offset)
+        t.transform.rotation.w = 1.0
+        self.tf_pub.sendTransform(t)
         pose = PoseStamped()
         pose.header = tf.header
-        p = tf.transform.translation
-        pose.pose.position.x, pose.pose.position.y, pose.pose.position.z = p.x, p.y, p.z
-        pose.pose.orientation = tf.transform.rotation
+        p, q = tf.transform.translation, tf.transform.rotation
+        d = rotate(q, [float(v) for v in self.offset])
+        pose.pose.position.x, pose.pose.position.y, pose.pose.position.z = p.x + d[0], p.y + d[1], p.z + d[2]
+        pose.pose.orientation = q
         self.pose_pub.publish(pose)
         if not self.shown:  # markers only once the frame exists, else RViz drops them
             self.shown = True
