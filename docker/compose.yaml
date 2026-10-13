@@ -67,6 +67,44 @@ services:
       -p target_frame:=pelvis
     depends_on: [sensors]
 
+  # ── 2b. VoxelNeXt detection on the REAL robot (VR teleop stack) ──────────────
+  # Robot Mid-360 /livox/lidar (frame mid360_link, TF from the robot) -> /g1/detections/livox,
+  # drawn in the VR 'humans' panel. Parameters are the real-robot ones from
+  # src/g1_bringup/launch/real_live_detection.launch.py. Domain 0, Cyclone pinned to enp2s0.
+  #   ROS_DOMAIN_ID=0 docker compose -f docker/compose.yaml --profile real up detection-real
+  # or DET=docker ~/Projects/thesis/G1_sim/scripts/real_teleop_up.sh up
+  detection-real:
+    <<: *gpu-common
+    image: thdhyan/g1-detection:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.detection
+    environment:
+      - ROS_DOMAIN_ID=0
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - G1_INTERFACE=${G1_INTERFACE:-enp2s0}
+      - CYCLONEDDS_URI=file:///cyclonedds_g1_real.xml
+    volumes:
+      - ../pt/voxelnext_nuscenes.pth:/checkpoints/voxelnext_nuscenes.pth:ro
+      - ../../G1_sim/docker/cyclonedds_g1_real.xml:/cyclonedds_g1_real.xml:ro
+    command: >
+      ros2 run livox_detection livox_detection_node
+      --ros-args
+      -p algorithm:=voxelnext
+      -p checkpoint_path:=/checkpoints/voxelnext_nuscenes.pth
+      -p voxelnext_dir:=/ws/VoxelNeXt
+      -p voxelnext_cfg:=/ws/VoxelNeXt/tools/cfgs/nuscenes_models/cbgs_voxel0075_voxelnext.yaml
+      -p input_topic:=/livox/lidar
+      -p target_frame:=pelvis
+      -p score_threshold:=0.15
+      -p class_filter:=pedestrian
+      -p max_hz:=5.0
+      -p accumulate_frames:=10
+      -p max_distance:=25.0
+      -p offset_ground:=-0.3
+      -p device:=cuda
+    profiles: [real]      # opt-in: docker compose --profile real up detection-real
+
   # ── 3. LiDAR-HMR (humanm3) ──────────────────────────────────────────────────
   hmr:
     <<: *gpu-common
