@@ -722,6 +722,17 @@
     <parent link="torso_link"/>
     <child link="d435_link"/>
   </joint>
+  <!-- D435i on the v2 chest mount (~/Projects/g1_d435i_chest_mount), centre station.
+       Origin = RealSense camera_link (depth / left-IR origin): body centre at torso_link
+       (0.13305 - 0.0125, 0, 0.165) m; camera_link sits 4.3 mm behind the front glass
+       (front face x = 0.13305) and 17.5 mm left of the body centre. Level, looking along +x.
+       Colour optical centre = this frame + (0, 0.015, 0). -->
+  <link name="chest_d435_link"/>
+  <joint name="chest_d435_joint" type="fixed">
+    <origin xyz="0.12875 0.0175 0.165" rpy="0 0 0"/>
+    <parent link="torso_link"/>
+    <child link="chest_d435_link"/>
+  </joint>
 
   <!-- mid360 -->
   <link name="mid360_link"></link>
