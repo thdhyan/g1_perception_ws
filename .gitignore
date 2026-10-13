@@ -41,3 +41,7 @@ pt/*.pt
 VoxelKP/
 reid_data/
 point-cloud-reid/
+
+# g1_intent runs and session bags
+intent_runs/
+bags/
