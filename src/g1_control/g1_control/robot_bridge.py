@@ -24,8 +24,17 @@ Commands:
     {"cmd": "ensure_walk_mode"}                  -> {"ok": true, "fsm_id": 501}
     {"cmd": "move", "dx": 1.0, "dy": 0.0}        -> {"ok": true}
     {"cmd": "rotate", "degrees": 180}            -> {"ok": true}
+    {"cmd": "turn_imu", "delta_deg": 90, "yaw_rate": 0.25, "tol_deg": 1.0}
+                                                 -> {"ok": true, "turned_deg", "residual_deg", "passes"}
+      turn in place by delta_deg (+ = counter-clockwise), closed loop on the robot's IMU yaw
     {"cmd": "damp"}                              -> {"ok": true}
-    {"cmd": "stop"}                              -> {"ok": true}
+    {"cmd": "stop"}                              -> {"ok": true}   (also holds the arms)
+    {"cmd": "kill"}                              -> {"ok": true}   VR kill switch: zero velocity,
+      arms back to the loco controller (0.5 s), lock stand (FSM 4), KILL_LOCK_S later Damp()
+    {"cmd": "set_velocity", "vx":.., "vy":.., "wz":.., "duration": 0.3, "auto_walk": false}
+    {"cmd": "arm_traj", "names": [14 arm joints], "points": [[14], ...], "dt": 0.1}
+    {"cmd": "arm_hold"} / {"cmd": "arm_release"} / {"cmd": "arm_state"}
+      rt/arm_sdk planned arm motion, see arm_sdk_player.py
 Errors:
     {"ok": false, "error": "..."}
 """
@@ -42,6 +51,11 @@ from unitree_sdk2py.core.channel import ChannelFactoryInitialize
 from unitree_sdk2py.g1.loco.g1_loco_client import LocoClient
 from unitree_sdk2py.g1.arm.g1_arm_action_client import G1ArmActionClient, action_map
 
+try:
+    from arm_sdk_player import ArmSdkPlayer          # run as a script (the usual way)
+except ImportError:
+    from g1_control.arm_sdk_player import ArmSdkPlayer
+
 FSM_ZERO_TORQUE = 0
 FSM_DAMP = 1
 FSM_READY_STAND = 4
@@ -51,6 +65,14 @@ DEFAULT_LINEAR_SPEED = 0.20
 DEFAULT_YAW_RATE = 0.5
 ROTATE_COMPENSATION = 9.0 / 6.0
 SETTLE_TIME = 2.0
+KILL_LOCK_S = 2.0       # kill: locked standing this long, then damp
+# turn_imu: the loco controller turns only ~0.6-0.8x the commanded wz, and by a different amount
+# each run (foot slip), so a timed turn misses by up to 45 deg; this stops on the IMU instead.
+TURN_IMU_RATE = 0.25    # rad/s
+TURN_IMU_COAST_S = 0.1  # stop this early (x rate): the robot keeps turning after zero velocity
+TURN_IMU_SETTLE_S = 0.8  # zero velocity this long before measuring a pass
+TURN_IMU_PASSES = 3     # first pass + corrections
+TURN_IMU_TIMEOUT = 40.0  # s, whole turn
 
 DEFAULT_SOCKET_PATH = "/tmp/g1_robot_bridge.sock"
 
@@ -93,6 +115,9 @@ class G1Robot:
         # Checked from a different thread than the one running the traversal,
         # which is why the server is threaded.
         self._abort = threading.Event()
+        # rt/arm_sdk: slow planned arm trajectories from the VR teleop relay
+        # (G1_sim/teleop/real_robot_relay.py). Idle (sends nothing) until the first arm_traj.
+        self.arm_sdk = ArmSdkPlayer()
 
     def get_fsm(self) -> int:
         code, fsm_id = self.client.GetFsmId()
@@ -134,7 +159,8 @@ class G1Robot:
         time.sleep(SETTLE_TIME)
         return self._switch_to_walk_with_retry()
 
-    def set_velocity(self, vx: float, vy: float, wz: float, duration: float = 0.3):
+    def set_velocity(self, vx: float, vy: float, wz: float, duration: float = 0.3,
+                     auto_walk: bool = True):
         """One non-blocking velocity command, for teleop and any other continuous
         controller streaming at a fixed rate.
 
@@ -146,7 +172,16 @@ class G1Robot:
 
         ensure_walk_mode() is only called when leaving zero velocity, since it
         polls the FSM and would otherwise run on every streamed command.
+
+        auto_walk=False (VR teleop) never switches FSM -- ensure_walk_mode() may Damp()
+        the robot -- and refuses to move unless the robot is already in walk mode.
         """
+        if not auto_walk and not self._walking:
+            fsm_id = self.get_fsm()
+            if fsm_id != FSM_WALK:
+                raise RuntimeError(f"robot not in walk mode (fsm {fsm_id}, need {FSM_WALK}); "
+                                   "switch it with the remote first")
+            self._walking = True
         if abs(vx) > 1e-3 or abs(vy) > 1e-3 or abs(wz) > 1e-3:
             if not self._walking:
                 self.ensure_walk_mode()
@@ -214,6 +249,59 @@ class G1Robot:
         time.sleep(0.2)
         print("[G1Robot] Rotation complete. Fully halted.")
 
+    def imu_yaw(self) -> float:
+        """Torso IMU yaw (rad) from rt/lowstate, through the arm_sdk player's subscription."""
+        st = self.arm_sdk._state
+        if st is None or time.monotonic() - self.arm_sdk.state_t > 0.2:
+            raise RuntimeError("no fresh rt/lowstate (IMU)")
+        return st.imu_state.rpy[2]
+
+    def turn_imu(self, delta_deg: float, yaw_rate: float = TURN_IMU_RATE, tol_deg: float = 1.0) -> dict:
+        """Turn in place by delta_deg, closed loop on IMU yaw: stream wz until the IMU has turned
+        the remaining angle (less the coast), settle, re-measure, correct. Aborted by stop()."""
+        if not self._walking:
+            self.ensure_walk_mode()
+            self._walking = True
+        self._abort.clear()
+        delta, tol, coast = math.radians(delta_deg), math.radians(tol_deg), yaw_rate * TURN_IMU_COAST_S
+        prev, turned, passes = self.imu_yaw(), 0.0, 0
+        t_end = time.monotonic() + TURN_IMU_TIMEOUT
+
+        def track():
+            nonlocal prev, turned
+            y = self.imu_yaw()
+            d = (y - prev + math.pi) % (2 * math.pi) - math.pi
+            prev, turned = y, turned + d
+            return d
+
+        def hold_zero(seconds):
+            t = time.monotonic() + seconds
+            while time.monotonic() < t:
+                self.client.SetVelocity(0.0, 0.0, 0.0, duration=0.2)
+                time.sleep(0.05)
+                track()
+
+        while passes < TURN_IMU_PASSES:
+            remaining = delta - turned
+            if abs(remaining) <= tol:
+                break
+            passes += 1
+            sign = math.copysign(1.0, remaining)
+            stop_at = max(abs(remaining) - coast, abs(remaining) / 2)
+            progress = 0.0
+            while progress < stop_at:
+                if self._abort.is_set() or time.monotonic() > t_end:
+                    hold_zero(0.3)
+                    raise RuntimeError(f"turn_imu {'aborted by stop' if self._abort.is_set() else 'timed out'} "
+                                       f"after {math.degrees(turned):+.1f} of {delta_deg:+.1f} deg")
+                self.client.SetVelocity(0.0, 0.0, sign * yaw_rate, duration=0.2)
+                time.sleep(0.05)
+                progress += sign * track()
+            hold_zero(TURN_IMU_SETTLE_S)
+            print(f"[G1Robot] turn_imu pass {passes}: turned {math.degrees(turned):+.1f} of {delta_deg:+.1f} deg")
+        return {"turned_deg": round(math.degrees(turned), 2),
+                "residual_deg": round(math.degrees(delta - turned), 2), "passes": passes}
+
     def damp(self):
         self.client.Damp()
 
@@ -228,6 +316,20 @@ class G1Robot:
             time.sleep(0.05)
         self.client.StopMove()
         self._walking = False
+
+    def kill(self):
+        """VR kill switch: brake, give the arms back, lock stand, then damp. Runs on its own thread."""
+        print("[G1Robot] KILL: zero velocity, arms released, lock stand, then damp")
+        self.arm_sdk.release(ramp_s=0.5)
+        self.stop()
+        try:
+            self.client.SetFsmId(FSM_READY_STAND)
+        except Exception as e:                      # damp regardless
+            print(f"[G1Robot] KILL: lock stand failed ({e}), damping now")
+        else:
+            time.sleep(KILL_LOCK_S)
+        self.client.Damp()
+        print(f"[G1Robot] KILL done: FSM {self.get_fsm()}")
 
     def execute_arm_action(self, action_name_or_id):
         """Execute action via G1ArmActionClient if available, with action_map lookups."""
@@ -347,8 +449,24 @@ def dispatch(robot: G1Robot, req: dict) -> dict:
     # emergency stop. Here it sets the abort flag the traversal loops poll and
     # streams zero velocity immediately.
     if cmd == "stop":
+        robot.arm_sdk.hold()
         robot.stop()
         return {"ok": True}
+    if cmd == "kill":                       # same reason as stop: never wait for the lock
+        threading.Thread(target=robot.kill, daemon=True).start()
+        return {"ok": True}
+    # rt/arm_sdk commands have their own lock and never block: no robot._lock either.
+    if cmd == "arm_traj":
+        robot.arm_sdk.play(req["names"], req["points"], float(req["dt"]))
+        return {"ok": True}
+    if cmd == "arm_hold":
+        robot.arm_sdk.hold()
+        return {"ok": True}
+    if cmd == "arm_release":
+        robot.arm_sdk.release()
+        return {"ok": True}
+    if cmd == "arm_state":
+        return {"ok": True, **robot.arm_sdk.status()}
 
     with robot._lock:
         if cmd == "get_fsm":
@@ -361,13 +479,18 @@ def dispatch(robot: G1Robot, req: dict) -> dict:
             return {"ok": True}
         elif cmd == "set_velocity":
             robot.set_velocity(float(req.get("vx", 0.0)), float(req.get("vy", 0.0)),
-                               float(req.get("wz", 0.0)), float(req.get("duration", 0.3)))
+                               float(req.get("wz", 0.0)), float(req.get("duration", 0.3)),
+                               bool(req.get("auto_walk", True)))
             return {"ok": True}
         elif cmd == "rotate":
             robot.rotate(float(req.get("degrees", 0.0)),
                          float(req.get("yaw_rate", DEFAULT_YAW_RATE)),
                          float(req.get("compensation", ROTATE_COMPENSATION)))
             return {"ok": True}
+        elif cmd == "turn_imu":
+            return {"ok": True, **robot.turn_imu(float(req["delta_deg"]),
+                                                 float(req.get("yaw_rate", TURN_IMU_RATE)),
+                                                 float(req.get("tol_deg", 1.0)))}
         elif cmd == "damp":
             robot.damp()
             return {"ok": True}
