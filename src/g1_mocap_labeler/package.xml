@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>g1_mocap_labeler</name>
+  <version>0.1.0</version>
+  <description>
+    Keyboard GUI to name PhaseSpace LED groups (human / robot), set or capture their heading,
+    and republish them as TF frames and /mocap/agents. Includes a fake PhaseSpace for testing.
+  </description>
+  <maintainer email="th.dhyan.us@gmail.com">thakk100</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>python3-tk</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
