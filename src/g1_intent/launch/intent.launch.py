@@ -63,6 +63,8 @@ def generate_launch_description():
         DeclareLaunchArgument("fake_mocap", default_value="false", description="true: fake_phasespace instead"),
         DeclareLaunchArgument("phasespace", default_value="true", description="start g1_phasespace (real)"),
         DeclareLaunchArgument("robot_group", default_value="dhyan-hat-3"),
+        DeclareLaunchArgument("profile", default_value="Dhyan Hat",
+                              description="PhaseSpace session profile (empty: server default)"),
         DeclareLaunchArgument("intent_sim_dir", default_value="~/Projects/thesis/intent-sim"),
         DeclareLaunchArgument("runs_dir", default_value="~/Projects/thesis/g1_perception_ws/intent_runs"),
         DeclareLaunchArgument("canvas_origin_x", default_value="-5.0",
@@ -84,7 +86,7 @@ def generate_launch_description():
         IncludeLaunchDescription(
             PathJoinSubstitution([FindPackageShare("g1_phasespace"), "launch", "phasespace.launch.py"]),
             # fake_mocap: no tracker, but robot_head, the G1 model and RViz still run on the fake TFs
-            launch_arguments={"robot_group": cfg("robot_group"), "rviz": cfg("rviz"),
+            launch_arguments={"robot_group": cfg("robot_group"), "rviz": cfg("rviz"), "profile": cfg("profile"),
                               "tracker": NotSubstitution(cfg("fake_mocap"))}.items(),
             condition=IfCondition(cfg("phasespace")),
         ),
