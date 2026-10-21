@@ -9,7 +9,7 @@ goal heading. A goal is reached after holding POS_TOL / YAW_TOL for SETTLE_S.
 
 import math
 
-POS_TOL = 0.05                 # m
+POS_TOL = 0.20                 # m; real G1 stalls 0.1-0.3 m short (walk deadband), 0.05 timed out
 YAW_TOL = math.radians(1.0)    # rad
 SETTLE_S = 0.0                 # s; the real G1 lags ~3 s and drifts out while holding, so a goal counts once entered
 GOAL_TIMEOUT_S = 60.0          # s per goal
