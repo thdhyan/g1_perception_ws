@@ -46,6 +46,16 @@ Visualization Manager:
         Value: /phasespace/robot
         Durability Policy: Transient Local
         Reliability Policy: Reliable
+    - Class: rviz_default_plugins/RobotModel
+      Name: G1 model (hat -> pelvis)
+      Enabled: true
+      Description Source: Topic
+      Description Topic:
+        Value: /ps_model/robot_description
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      TF Prefix: ps
+      Alpha: 0.8
     - Class: rviz_default_plugins/TF
       Name: TF (cameras, LED groups, LEDs, rigids)
       Enabled: true
