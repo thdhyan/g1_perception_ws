@@ -23,6 +23,13 @@ measured heading (solid arrow) and, for the selected group, the heading you are 
 to apply (dashed orange). Enter on a captured (fit) group re-orients its layout so its
 current facing becomes the dial heading, no re-capture needed.
 Labels (and captured layouts) are saved to `labels_file` and reloaded at start.
+
+Static humans (add_static / delete_static, web console Labeler tab): one tracker hat
+placed on several people in turn, who then stay put. Each add averages the hat's pose
+for 1 s and stores it under a new name; it is published like a labelled group
+(yaw_source "static_pose", group "static:<hat>") until deleted, and saved in
+`labels_file` under static_humans. Leave that tracker hat itself unnamed, or it is
+also an agent wherever it goes next.
 """
 
 import json
@@ -79,7 +86,9 @@ class Labeler(Node):
 
         self.lock = threading.Lock()
         self.groups = {}  # hat -> {"leds": [...], "oriented": bool}
-        self.labels = self.load()  # hat -> {"name", "role", "heading_deg", "ref": {led: [x,y,z]}}
+        self.labels, self.statics = self.load()  # hat -> {"name", "role", "heading_deg", "ref": {led: [x,y,z]}}
+        # statics: name -> {"x", "y", "z", "yaw_deg", "hat"}
+        self.static_capture = None  # (hat, name, heading_deg or None, [(x, y, z, yaw)])
         self.state = {}  # hat -> live dict for the GUI
         self.capture = None  # (hat, heading_deg, [samples])
         self.status = f"labels: {self.labels_file}"
@@ -94,18 +103,18 @@ class Labeler(Node):
     # ── persistence ──────────────────────────────────────────────────────
     def load(self):
         if not os.path.exists(self.labels_file):
-            return {}
+            return {}, {}
         with open(self.labels_file) as f:
             data = yaml.safe_load(f) or {}
         labels = data.get("groups", {})
         for lab in labels.values():
             lab["ref"] = {int(k): v for k, v in (lab.get("ref") or {}).items()}
-        return labels
+        return labels, data.get("static_humans") or {}
 
     def save(self):
         os.makedirs(os.path.dirname(self.labels_file), exist_ok=True)
         with self.lock:
-            data = {"frame": self.frame, "groups": self.labels}
+            data = {"frame": self.frame, "groups": self.labels, "static_humans": self.statics}
         text = yaml.safe_dump(data, sort_keys=True)  # dump before opening: a failed dump must not truncate the file
         with open(self.labels_file, "w") as f:
             f.write(text)
@@ -118,7 +127,7 @@ class Labeler(Node):
             if name and (name in self.groups or name == self.frame):
                 self.status = f"'{name}' is a PhaseSpace frame name; pick another"
                 return
-            taken = {lab["name"] for h, lab in self.labels.items() if h != hat}
+            taken = {lab["name"] for h, lab in self.labels.items() if h != hat} | set(self.statics)
             if name and name in taken:
                 self.status = f"'{name}' already used by another group"
                 return
@@ -156,6 +165,56 @@ class Labeler(Node):
         self.capture = (hat, heading, [])
         self.status = f"capturing {hat} facing {heading:.0f} deg: hold still..."
 
+    def add_static(self, hat, name, heading):
+        """Start a 1 s average of `hat`'s pose; it becomes static human `name`, facing
+        `heading` (deg) or, when empty, the hat's measured yaw."""
+        name = name.strip()
+        if self.static_capture is not None:
+            self.status = f"still placing {self.static_capture[1]}: wait 1 s"
+            return
+        with self.lock:
+            taken = {lab["name"] for lab in self.labels.values()} | set(self.statics) | set(self.groups) | {self.frame}
+        if not name or name in taken:
+            self.status = f"static human needs a new, unused name (got {name!r})"
+            return
+        if hat not in self.state or self.state[hat]["x"] is None:
+            self.status = f"{hat} is not visible: cannot place {name}"
+            return
+        try:
+            heading = float(heading) if str(heading).strip() else None
+        except ValueError:
+            self.status = f"heading {heading!r} is not a number"
+            return
+        self.static_capture = (hat, name, heading, [])
+        self.status = f"placing {name} at {hat}: hold still..."
+
+    def static_tick(self, x, y, z, yaw):
+        hat, name, heading, samples = self.static_capture
+        samples.append((x, y, z, yaw))
+        if len(samples) < CAPTURE_SAMPLES:
+            return
+        self.static_capture = None
+        yaws = [s[3] for s in samples if s[3] is not None]
+        if heading is None and not yaws:
+            self.status = f"{hat} has no measured yaw: type {name}'s heading"
+            return
+        if heading is None:
+            heading = math.degrees(math.atan2(sum(map(math.sin, yaws)), sum(map(math.cos, yaws))))
+        x, y, z = (round(float(np.mean([s[i] for s in samples])), 3) for i in range(3))
+        with self.lock:
+            self.statics[name] = {"x": x, "y": y, "z": z, "yaw_deg": round(heading, 1), "hat": hat}
+        self.save()
+        self.status = f"static human {name} at ({x:.2f}, {y:.2f}), facing {heading:.0f} deg"
+
+    def delete_static(self, name):
+        with self.lock:
+            gone = self.statics.pop(name, None)
+        if gone is None:
+            self.status = f"no static human {name!r}"
+            return
+        self.save()
+        self.status = f"deleted static human {name}"
+
     # ── ROS ──────────────────────────────────────────────────────────────
     def on_groups(self, msg):
         d = json.loads(msg.data)
@@ -178,6 +237,7 @@ class Labeler(Node):
         with self.lock:
             groups = dict(self.groups)
             labels = {h: dict(v) for h, v in self.labels.items()}
+            statics = {n: dict(v) for n, v in self.statics.items()}
         state, agents, tfs = {}, [], []
         for hat, g in sorted(groups.items()):
             leds = {}
@@ -196,6 +256,8 @@ class Labeler(Node):
             if hat_tf is not None or leds:
                 x, y, z, yaw, src = self.pose(lab, g, hat_tf, leds)
                 st.update(x=x, y=y, yaw=yaw, src=src)
+                if self.static_capture and self.static_capture[0] == hat:
+                    self.static_tick(x, y, z, yaw)
                 if lab.get("name"):
                     agents.append({"name": lab["name"], "group": hat, "role": st["role"],
                                    "x": round(x, 3), "y": round(y, 3), "z": round(z, 3),
@@ -203,6 +265,10 @@ class Labeler(Node):
                                    "yaw_source": src})
                     tfs.append(self.make_tf(now, lab["name"], x, y, z, yaw or 0.0))
             state[hat] = st
+        for name, sh in sorted(statics.items()):
+            agents.append({"name": name, "group": f"static:{sh['hat']}", "role": "human", "x": sh["x"], "y": sh["y"],
+                           "z": sh["z"], "yaw_deg": sh["yaw_deg"], "yaw_source": "static_pose"})
+            tfs.append(self.make_tf(now, name, sh["x"], sh["y"], sh["z"], math.radians(sh["yaw_deg"])))
         if tfs:
             self.tf_pub.sendTransform(tfs)
         self.agents_pub.publish(String(data=json.dumps(
