@@ -5,14 +5,18 @@ tolerances retuned for the real robot's lag; here the pose is PhaseSpace and the
 Far from the goal (> NEAR): turn toward it, walk forward once the bearing error is
 under TURN_FIRST. Near: body-frame holonomic step toward it while turning to the
 goal heading. A goal is reached after holding POS_TOL / YAW_TOL for SETTLE_S.
+A waypoint goal ("waypoint": True, from a low-level path planner) is passed through:
+reached within WAYPOINT_TOL, heading never checked, no turn phase.
 """
 
 import math
 
 POS_TOL = 0.20                 # m; real G1 stalls 0.1-0.3 m short (walk deadband), 0.05 timed out
+WAYPOINT_TOL = 0.25            # m
 YAW_TOL = math.radians(1.0)    # rad
 SETTLE_S = 0.0                 # s; the real G1 lags ~3 s and drifts out while holding, so a goal counts once entered
 GOAL_TIMEOUT_S = 60.0          # s per goal
+STALL_S, STALL_M = 1.0, 0.02   # inside NEAR, no 2 cm of progress for 1 s = arrived (G1 steps in place at low speed)
 NEAR = 0.5                     # m
 TURN_FIRST = math.radians(35)  # rad
 VX = (-0.3, 0.5)               # m/s
@@ -66,6 +70,7 @@ class GoalRunner:
         self.goals = [dict(g, status="pending") for g in goals]
         self.i, self.phase = 0, "walk"
         self.t_goal = self.t_in_tol = None
+        self.best, self.t_best = math.inf, None  # closest distance to the goal so far, and when
 
     @property
     def done(self):
@@ -78,10 +83,24 @@ class GoalRunner:
         gyaw = math.radians(g["yaw_deg"])
         if self.t_goal is None:
             self.t_goal, g["status"] = t, "active"
+        if g.get("waypoint"):
+            if math.hypot(g["x"] - x, g["y"] - y) < WAYPOINT_TOL:
+                self.finish(t, "reached", x, y, yaw)
+                return 0.0, 0.0, 0.0
+            if t - self.t_goal > GOAL_TIMEOUT_S:
+                self.finish(t, "timeout", x, y, yaw)
+                return 0.0, 0.0, 0.0
+            vx, vy, wz, self.phase = control(g["x"], g["y"], gyaw, x, y, yaw)
+            return vx, vy, wz
         if not self.final_yaw:
+            dist = math.hypot(g["x"] - x, g["y"] - y)
+            if dist < self.best - STALL_M:
+                self.best, self.t_best = dist, t
+            stalled = dist < NEAR and t - self.t_best > STALL_S
+            if stalled and self.phase != "turn":
+                g["stalled_m"] = round(dist, 3)
             # a rotate call turns in place: its x, y is only the pose the planner saw
-            if (self.phase == "turn" or g.get("call") == "rotate"
-                    or math.hypot(g["x"] - x, g["y"] - y) < POS_TOL):
+            if self.phase == "turn" or g.get("call") == "rotate" or dist < POS_TOL or stalled:
                 self.phase = "turn"
                 return 0.0, 0.0, 0.0
             gyaw = yaw  # facing is the caller's turn, after arrival
@@ -105,6 +124,7 @@ class GoalRunner:
                  yaw_err_deg=round(math.degrees(wrap(math.radians(g["yaw_deg"]) - yaw)), 1))
         self.i += 1
         self.t_goal = self.t_in_tol = None
+        self.best, self.t_best = math.inf, None
         self.phase = "walk"
 
 
