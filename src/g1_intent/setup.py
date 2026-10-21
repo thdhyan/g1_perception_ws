@@ -23,5 +23,6 @@ setup(
         "intent_planner = g1_intent.intent_planner:main",
         "intent_review_gui = g1_intent.intent_review_gui:main",
         "goto_executor = g1_intent.goto_executor:main",
+        "lidar_obstacles = g1_intent.lidar_obstacles:main",
     ]},
 )

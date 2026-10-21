@@ -13,6 +13,7 @@ Default (ox, oy) = (-5, 3.5) centres the 10 x 7 m canvas on the PhaseSpace origi
 import math
 import os
 import sys
+import time
 from pathlib import Path
 
 
@@ -61,10 +62,19 @@ class CanvasFrame:
         return cx + self.ox, self.oy - cy
 
 
-def build_scene(agents: list[dict], frame: CanvasFrame):
-    """intent-sim Scene from /mocap/agents entries. Returns (scene, warnings)."""
+def obstacle_boxes(obs, recv_t, frame, max_age=3.0):
+    """[x0, y0, x1, y1] boxes of the last /intent/obstacles message (lidar_obstacles), or []
+    when there is none, it is stale (node stopped) or it is in another frame than the agents."""
+    if obs is None or time.monotonic() - recv_t > max_age or obs.get("frame") != frame:
+        return []
+    return obs["boxes"]
+
+
+def build_scene(agents: list[dict], frame: CanvasFrame, boxes=()):
+    """intent-sim Scene from /mocap/agents entries (+ PhaseSpace-frame [x0, y0, x1, y1]
+    obstacle boxes from lidar_obstacles). Returns (scene, warnings)."""
     from config import CANVAS_H, CANVAS_W
-    from sim.entities import Human, Robot
+    from sim.entities import Human, Obstacle, Robot
     from sim.scene import Scene
 
     warnings = []
@@ -83,6 +93,9 @@ def build_scene(agents: list[dict], frame: CanvasFrame):
     scene.orientation = all(h["yaw_deg"] is not None for h in humans)
     if not scene.orientation:
         warnings.append("some humans have no heading: facing withheld from the prompt")
+    for x0, y0, x1, y1 in boxes:  # canvas is y-down: the box's top-left is (x0, y1)
+        cx, cy = frame.to_canvas(x0, y1)
+        scene.obstacles.append(Obstacle(round(cx, 2), round(cy, 2), round(x1 - x0, 2), round(y1 - y0, 2)))
     for a in agents:
         cx, cy = frame.to_canvas(a["x"], a["y"])
         if not (0 <= cx <= CANVAS_W and 0 <= cy <= CANVAS_H):

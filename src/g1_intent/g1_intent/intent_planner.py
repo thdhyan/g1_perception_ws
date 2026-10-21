@@ -9,6 +9,8 @@ LLMClient function calling, multi-round execution in the 2D sim). The resulting
 trace becomes pose goals in the PhaseSpace frame, published latched on /intent/plan
 for the review GUI and the executor. Nothing moves until a plan is approved.
 
+Fresh LiDAR boxes on /intent/obstacles (lidar_obstacles) become the scene's obstacles.
+
 Variant "ra" needs "anchor": the one person move_to_relative may use (scene_params anchor).
 
 Params: provider, model (any intent-sim provider: openai, openrouter, nim, gemini,
@@ -28,7 +30,7 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from std_msgs.msg import String
 
-from g1_intent.scene_bridge import CanvasFrame, build_scene, goals_from_trace, import_intent_sim
+from g1_intent.scene_bridge import CanvasFrame, build_scene, goals_from_trace, import_intent_sim, obstacle_boxes
 
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
@@ -52,11 +54,13 @@ class IntentPlanner(Node):
         from experiments.policy_runner import run_policy  # noqa: F401  (fail at start, not on first task)
 
         self.agents, self.agents_t = None, 0.0
+        self.obstacles, self.obstacles_t = None, 0.0
         self.busy = False
         self.plan_pub = self.create_publisher(String, "/intent/plan", LATCHED)
         self.status_pub = self.create_publisher(String, "/intent/status", 10)
         self.create_subscription(String, "/mocap/agents", self.on_agents, 10)
         self.create_subscription(String, "/intent/task", self.on_task, 10)
+        self.create_subscription(String, "/intent/obstacles", self.on_obstacles, LATCHED)
         self.get_logger().info(f"intent-sim at {self.intent_sim}; runs -> {self.runs_dir}; "
                                f"provider={self.param('provider')} model={self.param('model')}")
 
@@ -85,6 +89,9 @@ class IntentPlanner(Node):
     def on_agents(self, msg):
         self.agents, self.agents_t = json.loads(msg.data), time.monotonic()
 
+    def on_obstacles(self, msg):
+        self.obstacles, self.obstacles_t = json.loads(msg.data), time.monotonic()
+
     OVERRIDES = ("provider", "model", "base_url", "prompt_variant", "prompt_style", "scene_format", "temperature")
 
     def on_task(self, msg):
@@ -106,6 +113,10 @@ class IntentPlanner(Node):
         self.busy = True
         cfg = {k: req.get(k) if req.get(k) not in (None, "") else self.param(k) for k in self.OVERRIDES}
         cfg["anchor"] = req.get("anchor") or None
+        cfg["boxes"] = obstacle_boxes(self.obstacles, self.obstacles_t, self.agents.get("frame"))
+        if cfg["prompt_variant"] == "r" and cfg["boxes"]:  # intent-sim's relative encoding has no obstacles
+            self.status("variant r: LiDAR obstacles left out of the scene", "warn")
+            cfg["boxes"] = []
         threading.Thread(target=self.plan, args=(task, self.agents, cfg), daemon=True).start()
 
     def plan(self, task, snapshot, cfg):
@@ -113,7 +124,7 @@ class IntentPlanner(Node):
             from experiments.policy_runner import run_policy
             from llm.llm_client import LLMClient
 
-            scene, warnings = build_scene(snapshot["agents"], self.frame)
+            scene, warnings = build_scene(snapshot["agents"], self.frame, cfg["boxes"])
             for w in warnings:
                 self.status(f"warning: {w}", "warn")
             variant, anchor = cfg["prompt_variant"], cfg["anchor"]

@@ -56,6 +56,13 @@ Visualization Manager:
         Reliability Policy: Reliable
       TF Prefix: ps
       Alpha: 0.8
+    - Class: rviz_default_plugins/Map
+      Name: LiDAR obstacles (g1_intent obstacles:=true)
+      Enabled: true
+      Topic:
+        Value: /intent/obstacle_grid
+      Color Scheme: costmap
+      Alpha: 0.6
     - Class: rviz_default_plugins/TF
       Name: TF (cameras, LED groups, LEDs, rigids)
       Enabled: true
