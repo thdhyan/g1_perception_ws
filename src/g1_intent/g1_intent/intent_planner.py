@@ -1,11 +1,15 @@
 """intent-sim LLM planner on the live PhaseSpace scene.
 
-On a task (std_msgs/String on /intent/task) it snapshots /mocap/agents, turns
+On a task (std_msgs/String on /intent/task: plain text, or JSON {"task", and any of
+"provider", "model", "base_url", "prompt_variant", "prompt_style", "scene_format",
+"temperature", "anchor"} to override the params for that one plan) it snapshots /mocap/agents, turns
 it into an intent-sim Scene, and runs intent-sim's own static policy loop
 (experiments.policy_runner.run_policy: system prompt with proxemics guidance,
 LLMClient function calling, multi-round execution in the 2D sim). The resulting
 trace becomes pose goals in the PhaseSpace frame, published latched on /intent/plan
 for the review GUI and the executor. Nothing moves until a plan is approved.
+
+Variant "ra" needs "anchor": the one person move_to_relative may use (scene_params anchor).
 
 Params: provider, model (any intent-sim provider: openai, openrouter, nim, gemini,
 ollama, dl, spark01-03), base_url, prompt_style, prompt_variant, scene_format, temperature,
@@ -81,8 +85,16 @@ class IntentPlanner(Node):
     def on_agents(self, msg):
         self.agents, self.agents_t = json.loads(msg.data), time.monotonic()
 
+    OVERRIDES = ("provider", "model", "base_url", "prompt_variant", "prompt_style", "scene_format", "temperature")
+
     def on_task(self, msg):
-        task = msg.data.strip()
+        text = msg.data.strip()
+        try:
+            req = json.loads(text) if text.startswith("{") else {"task": text}
+        except json.JSONDecodeError as e:
+            self.status(f"bad task JSON: {e}", "error")
+            return
+        task = str(req.get("task", "")).strip()
         if not task:
             return
         if self.busy:
@@ -92,9 +104,11 @@ class IntentPlanner(Node):
             self.status("no fresh /mocap/agents: is the labeler running and the robot labelled?", "error")
             return
         self.busy = True
-        threading.Thread(target=self.plan, args=(task, self.agents), daemon=True).start()
+        cfg = {k: req.get(k) if req.get(k) not in (None, "") else self.param(k) for k in self.OVERRIDES}
+        cfg["anchor"] = req.get("anchor") or None
+        threading.Thread(target=self.plan, args=(task, self.agents, cfg), daemon=True).start()
 
-    def plan(self, task, snapshot):
+    def plan(self, task, snapshot, cfg):
         try:
             from experiments.policy_runner import run_policy
             from llm.llm_client import LLMClient
@@ -102,15 +116,23 @@ class IntentPlanner(Node):
             scene, warnings = build_scene(snapshot["agents"], self.frame)
             for w in warnings:
                 self.status(f"warning: {w}", "warn")
-            provider, model = self.param("provider"), self.param("model")
-            self.status(f"planning with {provider}/{model}: {task!r}")
+            variant, anchor = cfg["prompt_variant"], cfg["anchor"]
+            if variant in ("r", "ra", "rs") and not scene.orientation:
+                raise ValueError("relative prompt variants need every human's heading: label them in the labeler")
+            if variant == "ra" and anchor not in {h.name for h in scene.humans}:
+                raise ValueError(f"variant ra needs an anchor among the humans {[h.name for h in scene.humans]}, "
+                                 f"got {anchor!r}")
+            provider, model = cfg["provider"], cfg["model"]
+            self.status(f"planning with {provider}/{model} variant {variant}"
+                        f"{f' anchor {anchor}' if variant == 'ra' else ''}: {task!r}")
             t0 = time.time()
-            client = LLMClient(provider=provider, model=model or None, base_url=self.param("base_url") or None)
+            client = LLMClient(provider=provider, model=model or None, base_url=cfg["base_url"] or None)
             run_dir = run_policy(scene, task, client, experiment="g1_live",
-                                 temperature=self.param("temperature"),
-                                 prompt_variant=self.param("prompt_variant"),
-                                 scene_format=self.param("scene_format"),
-                                 prompt_style=self.param("prompt_style"),
+                                 temperature=float(cfg["temperature"]),
+                                 prompt_variant=variant,
+                                 scene_format=cfg["scene_format"],
+                                 prompt_style=cfg["prompt_style"],
+                                 scene_params={"anchor": anchor} if variant == "ra" else None,
                                  runs_dir=self.runs_dir)
             trace_path = run_dir / "trace.json"
             trace = json.loads(trace_path.read_text())
@@ -125,7 +147,8 @@ class IntentPlanner(Node):
             trace_path.write_text(json.dumps(trace, indent=2))
             plan = {
                 "id": run_dir.name, "run_dir": str(run_dir), "task": task, "provider": provider,
-                "model": client.model, "status": "ready", "frame": snapshot["frame"],
+                "model": client.model, "prompt_variant": variant, "anchor": anchor if variant == "ra" else None,
+                "status": "ready", "frame": snapshot["frame"],
                 "canvas_origin": [self.frame.ox, self.frame.oy],
                 "start": {"name": robot["name"], "x": robot["x"], "y": robot["y"], "yaw_deg": robot["yaw_deg"]},
                 "humans": [a for a in snapshot["agents"] if a["role"] == "human"],
