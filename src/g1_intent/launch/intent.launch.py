@@ -10,15 +10,38 @@ ros2 launch g1_intent intent.launch.py fake_mocap:=true dry_run:=true   # laptop
 ros2 launch g1_intent intent.launch.py provider:=openrouter model:=anthropic/claude-sonnet-4.5
 ros2 launch g1_intent intent.launch.py phasespace:=false                # PhaseSpace already running
 ros2 launch g1_intent intent.launch.py phasespace:=false use_sim_time:=true dry_run:=true   # ros2 bag play --clock
+ros2 launch g1_intent intent.launch.py record:=true slam:=true obstacles:=true   # bag + LIO/SLAM + LiDAR walls/tables
+
+record:=true   ros2 bag (sqlite3, 4 GB splits) of PhaseSpace, /mocap/agents, /intent/*, joints, Mid-360, D435i, TF and the
+               LIO/SLAM outputs into bag_dir/intent_<date>_<time>
+slam:=true     lidar_slam.launch.py: plain_slam_ros2 LIO odometry + SLAM on the robot's /livox/* (frames lio_*)
+obstacles:=true  lidar_obstacles: /livox/lidar -> walls / tables as scene obstacles (prompt + A* waypoints)
 """
 
+import time
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.substitutions import (EqualsSubstitution, LaunchConfiguration, NotSubstitution,
                                   PathJoinSubstitution)
 from launch_ros.actions import Node, SetParameter
 from launch_ros.substitutions import FindPackageShare
+
+# scripts/record_bag.sh --source real, plus the experiment. /lowstate and /sportmodestate need
+# unitree_hg / unitree_go on the laptop, else ros2 bag skips them (unknown type).
+BAG_TOPICS = [
+    "/livox/lidar", "/livox/imu",
+    "/camera/color/image_raw", "/camera/color/camera_info", "/camera/depth/image_rect_raw",
+    "/camera/depth/camera_info", "/camera/aligned_depth_to_color/image_raw", "/camera/depth/color/points",
+    "/camera/imu", "/joint_states", "/lowstate", "/secondary_imu", "/state_estimator/odom_pelvis",
+    "/sportmodestate", "/unitree/slam_mapping/points", "/tf", "/tf_static", "/robot_description",
+    "/mocap/agents",
+]
+# regex only: with an explicit topic list ros2 bag stops discovery early and misses topics that
+# appear after it starts (the robot's sensors, PhaseSpace groups)
+BAG_REGEX = "^(" + "|".join(BAG_TOPICS) + \
+    r"|/phasespace/.*|/intent/.*|/pslam/(imu_odom|imu_pose|pose_graph_poses|filtered_map_cloud))$"
 
 
 def generate_launch_description():
@@ -51,6 +74,11 @@ def generate_launch_description():
         DeclareLaunchArgument("ui", default_value="web", description="web: browser console | tk: Tk + pygame windows"),
         DeclareLaunchArgument("port", default_value="8090", description="web console port"),
         DeclareLaunchArgument("rviz", default_value="true"),
+        DeclareLaunchArgument("record", default_value="false", description="true: ros2 bag record (see BAG_TOPICS)"),
+        DeclareLaunchArgument("bag_dir", default_value="/Storage/g1_bags", description="home is full"),
+        DeclareLaunchArgument("slam", default_value="false", description="true: LIO odometry + SLAM on /livox/*"),
+        DeclareLaunchArgument("obstacles", default_value="false",
+                              description="true: LiDAR walls / tables as scene obstacles (needs the G1 model TF)"),
         SetParameter(name="use_sim_time", value=cfg("use_sim_time")),
 
         IncludeLaunchDescription(
@@ -79,4 +107,15 @@ def generate_launch_description():
              condition=IfCondition(EqualsSubstitution(cfg("ui"), "tk"))),
         Node(package="g1_intent", executable="goto_executor", output="screen",
              parameters=[{"dry_run": cfg("dry_run")}]),
+        IncludeLaunchDescription(
+            PathJoinSubstitution([FindPackageShare("g1_intent"), "launch", "lidar_slam.launch.py"]),
+            condition=IfCondition(cfg("slam"))),
+        Node(package="g1_intent", executable="lidar_obstacles", output="screen",
+             parameters=[canvas],
+             condition=IfCondition(cfg("obstacles"))),
+        ExecuteProcess(
+            cmd=["ros2", "bag", "record", "-s", "sqlite3", "--max-bag-size", str(4 * 1024 ** 3),  # as record_intent_session.sh
+                 "-o", PathJoinSubstitution([cfg("bag_dir"), time.strftime("intent_%Y%m%d_%H%M%S")]),
+                 "-e", BAG_REGEX],
+            output="screen", condition=IfCondition(cfg("record"))),
     ])
