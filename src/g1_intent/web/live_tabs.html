@@ -1,0 +1,67 @@
+      <button class="tab active" data-tab="liveTab">Live</button>
+      <button class="tab" data-tab="labelerTab">Labeler</button>
+      <button class="tab" data-tab="robotTab">Robot</button>
+<!-- panels -->
+      <div id="liveTab" class="tabpanel active">
+        <button id="estopBtn" title="/intent/estop: stops the executor and robot_bridge">E-STOP</button>
+        <div class="live-card">
+          <textarea id="liveTask" rows="2" placeholder="task, e.g. go greet Alice"></textarea>
+          <div class="live-grid">
+            <label>Provider <select id="liveProvider"></select></label>
+            <label>Model <input id="liveModel" list="liveModels"><datalist id="liveModels"></datalist></label>
+            <label>Variant <select id="liveVariant"></select></label>
+            <label>Style <select id="liveStyle"></select></label>
+            <label>Scene <select id="liveFormat"><option>json</option><option>nl</option></select></label>
+            <label>Temp <input id="liveTemp" type="number" step="0.1" min="0" max="2"></label>
+            <label title="variant ra: the human whose frame the prompt uses. Click a human on the canvas to pick.">Anchor <select id="liveAnchor"></select></label>
+          </div>
+          <div class="live-row">
+            <button id="planBtn">Plan</button>
+            <button id="previewBtn" title="Render the system prompt for the live scene into the System Prompt tab">Preview prompt</button>
+            <span id="liveMsg" class="dim"></span>
+          </div>
+        </div>
+        <div class="live-card">
+          <div class="live-row">
+            <label>Low-level planner <select id="llPlanner">
+              <option value="direct">direct (goto controller)</option>
+              <option value="astar">A* waypoints</option>
+              <option value="gd">GD waypoints</option>
+              <option value="adam">Adam waypoints</option>
+              <option value="adamw">AdamW waypoints</option>
+            </select></label>
+            <button id="llPreviewBtn" title="Plan robot -> each goal on the live SNGNN + GMM + obstacle cost map (Nav tab weights)">Preview path</button>
+            <button id="approveBtn" disabled>Approve</button>
+          </div>
+          <div id="llInfo" class="dim"></div>
+        </div>
+        <div id="planCard" class="live-card"><span class="dim">no plan yet</span></div>
+        <div id="execCard" class="live-card"></div>
+        <pre id="liveLog"></pre>
+      </div>
+      <div id="labelerTab" class="tabpanel">
+        <div class="live-row"><button id="labSave">Save labels</button><span id="labStatus" class="dim"></span></div>
+        <table id="labTable"><thead><tr><th>hat</th><th>LEDs</th><th>role</th><th>name</th><th>heading °</th><th>yaw / src</th><th></th></tr></thead><tbody></tbody></table>
+        <p class="dim">Name + Apply labels a group. Heading: the way the hat faces now (deg, CCW from +x); drag the slider (orange arrow on the canvas), release applies it. Capture fits the LED layout so yaw tracks the hat (robot: required).</p>
+        <h4>Static humans (one tracker, people standing still)</h4>
+        <div class="live-row">
+          <label>Tracker <select id="stHat"></select></label>
+          <label>Name <input id="stName" size="10"></label>
+          <label title="empty: the tracker's measured yaw">Heading ° <input id="stHeading" size="5" placeholder="tracker"><input id="stSlider" type="range" min="-180" max="180" step="1"></label>
+          <button id="stAdd">Add human (hold still 1 s)</button>
+        </div>
+        <table id="stTable"><thead><tr><th>name</th><th>x</th><th>y</th><th>heading °</th><th>tracker</th><th></th></tr></thead><tbody></tbody></table>
+        <p class="dim">Put the tracker on a person, type a name, Add: its pose (1 s average) is kept as that person until Delete, and saved with the labels. Leave the tracker hat itself unnamed above, or it is also a human wherever it goes next.</p>
+      </div>
+      <div id="robotTab" class="tabpanel">
+        <p class="dim" id="robotNote"></p>
+        <div class="robot-btns">
+          <button data-cmd="ensure_walk_mode">Walk mode</button>
+          <button data-cmd="stop">Stop</button>
+          <button data-cmd="get_fsm">Get FSM</button>
+          <button data-cmd="wave">Wave</button>
+          <button data-cmd="shake_hand">Shake hand</button>
+          <button data-cmd="damp" class="danger" title="Damping: the robot goes limp. Only when it is supported.">Damp</button>
+        </div>
+        <pre id="robotOut"></pre>
+      </div>

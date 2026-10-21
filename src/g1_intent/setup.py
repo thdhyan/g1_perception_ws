@@ -12,6 +12,7 @@ setup(
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
         ("share/" + package_name + "/launch", glob("launch/*.launch.py")),
+        ("share/" + package_name + "/web", glob("web/*")),
         ("share/" + package_name + "/config/pslam_real", glob("config/pslam_real/*.yaml")),
     ],
     install_requires=["setuptools"],
@@ -24,6 +25,7 @@ setup(
         "intent_planner = g1_intent.intent_planner:main",
         "intent_review_gui = g1_intent.intent_review_gui:main",
         "goto_executor = g1_intent.goto_executor:main",
+        "web_console = g1_intent.web_console:main",
         "lidar_obstacles = g1_intent.lidar_obstacles:main",
     ]},
 )

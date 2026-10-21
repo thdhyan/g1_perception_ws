@@ -1,0 +1,28 @@
+/* G1 live console: extra tabs on top of intent-sim's style.css */
+#liveBadge { margin-left: auto; font-size: 13px; padding: 2px 8px; border-radius: 4px; background: #0f3460; }
+#liveBadge.dry { background: #5a4a00; }
+#liveBadge.real { background: #6a1010; }
+.live-card { background: #16213e; border: 1px solid #333; border-radius: 6px; padding: 8px; margin-bottom: 8px; font-size: 13px; }
+.live-card textarea, .live-card input, .live-card select, #labTable input {
+  background: #0f3460; border: 1px solid #444; color: #e0e0e0; padding: 3px 6px; border-radius: 4px; font-size: 13px; }
+.live-card textarea { width: 100%; resize: vertical; margin-bottom: 6px; }
+.live-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+.live-grid label { display: flex; flex-direction: column; color: #aaa; font-size: 12px; }
+.live-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
+#liveTab button, #labelerTab button, #robotTab button {
+  background: #0f3460; border: 1px solid #4fc3f7; color: #e0e0e0; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
+#liveTab button:disabled { opacity: 0.4; cursor: default; }
+#approveBtn:not(:disabled) { background: #1b5e20; border-color: #66bb6a; }
+#estopBtn { width: 100%; padding: 10px !important; margin-bottom: 8px; font-size: 18px; font-weight: 700;
+  background: #b71c1c !important; border-color: #ff5252 !important; }
+.danger { border-color: #ff5252 !important; }
+.robot-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
+.robot-btns button { padding: 10px !important; }
+#liveLog, #robotOut { max-height: 220px; overflow-y: auto; font-size: 11px; }
+.plan-calls td { font-family: monospace; font-size: 11px; }
+.err { color: #ff6b6b; }
+.ok { color: #66bb6a; }
+#labTable input { width: 70px; }
+#labTable .head-slider { width: 110px; display: block; padding: 0; }
+#stSlider { width: 110px; vertical-align: middle; }
+#stTable td, #stTable th { padding: 2px 8px; }
