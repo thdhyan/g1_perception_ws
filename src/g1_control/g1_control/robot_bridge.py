@@ -70,7 +70,7 @@ KILL_LOCK_S = 2.0       # kill: locked standing this long, then damp
 # each run (foot slip), so a timed turn misses by up to 45 deg; this stops on the IMU instead.
 TURN_IMU_RATE = 0.25    # rad/s
 TURN_IMU_COAST_S = 0.1  # stop this early (x rate): the robot keeps turning after zero velocity
-TURN_IMU_SETTLE_S = 0.8  # zero velocity this long before measuring a pass
+TURN_IMU_SETTLE_S = 0.1  # zero velocity this long before measuring a pass (was 0.8)
 TURN_IMU_PASSES = 3     # first pass + corrections
 TURN_IMU_TIMEOUT = 40.0  # s, whole turn
 
