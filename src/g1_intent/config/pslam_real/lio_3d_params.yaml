@@ -1,0 +1,40 @@
+initial_pose:
+  translation: [0.0, 0.0, 0.0]
+  rotation_matrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+
+
+extrinsics:
+  imu_to_lidar:
+    # REAL robot: the Mid-360's own IMU (/livox/imu, inside the LiDAR housing), not the
+    # sim's pelvis IMU (that calibration stays in plain_slam_ros2/config). Livox spec:
+    # the IMU sits at (11.0, 23.29, -44.12) mm in the LiDAR frame with the same axes, so
+    # LiDAR-in-IMU = (-0.011, -0.02329, 0.04412), identity rotation (FAST-LIO mid360.yaml).
+    # The upside-down mount does not enter here: IMU and LiDAR flip together.
+    translation: [-0.011, -0.02329, 0.04412]
+    rotation_matrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+
+imu_params:
+  acc_scale: 9.80665 # livox_ros_driver2 publishes linear_acceleration in g, not m/s^2
+
+keyframe:
+  distance_th: 5.0
+  angle_th: 1000.0 # degree
+  min_active_points_rate: 0.95
+
+scan_cloud_preprocess:
+  clip_range: 1.0
+  filter_size: 0.1
+
+normal_map:
+  num_keyframes: 10
+  filter_size: 0.1
+  num_normal_points: 10
+  normal_eigen_val_thresh: 0.2
+
+estimator:
+  use_loose_coupling: false
+  huber_delta: 0.1
+  num_max_iteration: 5
+  num_max_matching_points: 10000
+  max_correspondence_dist: 1.0
+  convergence_th: 0.1
